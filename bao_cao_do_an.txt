@@ -1,0 +1,90 @@
+BÁO CÁO TIẾN ĐỘ ĐỒ ÁN CƠ SỞ: ỨNG DỤNG ĐỌC TRUYỆN (vBook)
+
+1. NHỮNG TÍNH NĂNG ĐÃ HOÀN THIỆN (ĐÃ LÀM)
+--------------------------------------------------
+- Giao diện người dùng (UI/UX):
+  + Hỗ trợ giao diện Sáng/Tối (Light/Dark Mode) đồng nhất toàn ứng dụng.
+  + Màn hình Splash Screen, Trang chủ (Home), Khám phá (Explore), Thư viện (Library), Cộng đồng (Community), và Cá nhân (Profile).
+  + Tối ưu hiển thị danh sách truyện dạng lưới (Grid) giống các ứng dụng đọc truyện chuyên nghiệp (Tachiyomi).
+
+- Trình đọc truyện cốt lõi (Reader Core):
+  + Hỗ trợ đọc cả định dạng EPUB và TXT mượt mà.
+  + Tuỳ chỉnh trải nghiệm đọc (Font chữ hiện đại, Cỡ chữ, Màu nền OLED/Màu sách cũ).
+  + Cử chỉ vuốt/chạm thông minh (Chạm trái/phải để qua chương, chạm giữa để mở Toolbar).
+  + Mục lục thông minh dạng Drawer, tự động highlight chương đang đọc và cuộn đến chương hiện tại.
+
+- Quản lý Dữ liệu & Xử lý File (Data Management):
+  + Lưu trữ Local (SharedPreferences) cho cấu hình người dùng và danh sách thư viện.
+  + Chức năng "Lưu tiến độ đọc": Ứng dụng tự động ghi nhớ chương đang đọc dở và mở lại đúng vị trí đó ở lần tiếp theo.
+  + Lưu tổng số chương EPUB, tác giả và thể loại từ metadata để phục vụ hiển thị tiến độ, tìm kiếm và lọc truyện.
+  + Trình quét Google Drive thông minh: Có khả năng quét và nhận diện cấu trúc thư mục lồng nhau (subfolders). Tự động gom các truyện có nhiều tập (Multi-Volume) và nối tên để hiển thị danh sách rõ ràng.
+  + Cơ chế API Service giả lập kết nối Server (sẵn sàng nâng cấp lên REST API thật).
+  + Tích hợp đọc truyện Offline từ bộ nhớ và đọc online từ Drive.
+  + Hỗ trợ tải truyện từ Google Drive về bộ nhớ ứng dụng để đọc offline trong thư viện cá nhân.
+  + Tải file từ Google Drive theo dạng stream, có hiển thị tiến trình tải và dung lượng đã nhận.
+  + Truyện TXT tải từ Google Drive được lưu kèm nội dung để mở đọc offline đúng.
+  + Khi cập nhật truyện đã có trong thư viện, ứng dụng nhận diện theo id, Drive file id hoặc đường dẫn local để tránh lệch dữ liệu.
+  + Khi xóa truyện khỏi thư viện, ứng dụng dọn kèm file truyện và ảnh bìa thuộc thư mục dữ liệu của app.
+
+- Backend & Cơ sở dữ liệu:
+  + Đã xây dựng backend REST API local trong thư mục backend/.
+  + Backend dùng Python standard library + SQLite, không cần cài Node/npm hay package ngoài.
+  + Có schema SQL gồm các bảng: users, stories, user_library, community_messages.
+  + Hỗ trợ API đăng ký/đăng nhập, token Bearer, danh sách truyện, quản trị truyện, thư viện cá nhân, lưu tiến độ đọc và tin nhắn cộng đồng.
+  + Có tài liệu API tại backend/README.md và smoke test tự động tại backend/smoke_test.py.
+  + Ứng dụng Flutter đã có thể gọi backend thật qua tham số --dart-define=VBOOK_API_BASE_URL.
+  + Màn Khám phá lấy danh sách truyện từ endpoint /stories.
+  + Màn Cá nhân hỗ trợ đăng ký/đăng nhập backend thật bằng email và mật khẩu.
+  + Màn Cộng đồng gửi/nhận tin nhắn thật qua endpoint /community/messages.
+  + Khi người dùng đã đăng nhập, tiến độ đọc và thao tác thêm truyện vào thư viện sẽ thử đồng bộ lên backend.
+
+- Chức năng tiện ích:
+  + Thanh tìm kiếm (Search) ở mục Khám phá để lọc truyện theo tên.
+  + Tìm kiếm nâng cao (29/05/2026): Tìm kiếm đồng thời theo tên truyện VÀ tên tác giả.
+  + Lọc theo thể loại (29/05/2026): Hàng chip thể loại ngang cuộn được, tự động thu thập
+    từ metadata của truyện. Hỗ trợ lọc kết hợp (thể loại + từ khóa tìm kiếm cùng lúc).
+  + Nút "Xóa lọc" xuất hiện khi đang lọc để reset nhanh về mặc định.
+  + Hiển thị số lượng truyện tìm được và tên thể loại đang lọc trên header.
+  + Card truyện ở màn Khám phá hiển thị thêm tên tác giả bên dưới tên truyện.
+  + Empty state thân thiện khi không tìm thấy kết quả.
+  + Kệ sách hỗ trợ tìm kiếm theo tên, tác giả, thể loại và sắp xếp theo: mới thêm, tên A-Z, đang đọc trước.
+  + Sửa lỗi nút tăng/giảm số cột ở kệ sách bị nhảy sai giá trị.
+
+- Bảo mật & cấu hình:
+  + Đã bỏ API Key Google Drive hard-code khỏi mã nguồn; ứng dụng nhận key qua tham số --dart-define=GOOGLE_DRIVE_API_KEY.
+  + Đã bổ sung quyền INTERNET vào AndroidManifest chính để bản release có thể tải dữ liệu online.
+  + Đã cho phép cleartext HTTP trên Android để phục vụ gọi backend local trong giai đoạn demo; khi phát hành thật cần chuyển sang HTTPS.
+  + Đã đổi tên ứng dụng hiển thị thành vBook và đổi Android applicationId/namespace sang com.vbook.reader.
+  + Đã cập nhật metadata web/manifest theo tên vBook.
+  + Khi thiếu API Key hoặc lỗi Drive, màn Khám phá hiển thị thông báo lỗi và nút "Thử lại" thay vì chỉ hiện danh sách rỗng.
+  + Đã cập nhật README hướng dẫn chạy app, kiểm thử và truyền API Key an toàn.
+
+2. KIỂM THỬ VÀ ỔN ĐỊNH (CẬP NHẬT 29/05/2026)
+--------------------------------------------------
+- Đã sửa test mẫu Counter mặc định thành smoke test phù hợp với cấu trúc Provider của ứng dụng.
+- Đã chạy kiểm tra tĩnh bằng lệnh `flutter analyze`: Không còn lỗi/lint.
+- Đã chạy kiểm thử tự động bằng lệnh `flutter test`: Tất cả test đều đạt.
+- Đã build thử APK debug bằng lệnh `flutter build apk --debug`: Build thành công.
+- Đã kiểm tra backend bằng lệnh `python -m py_compile backend/server.py backend/smoke_test.py`: Không có lỗi cú pháp.
+- Đã chạy smoke test backend bằng lệnh `python smoke_test.py`: Tất cả luồng API chính đều đạt.
+- Đã thêm /android/build/ vào .gitignore để tránh đưa file build Android vào quản lý mã nguồn.
+- Đã sửa lỗi tự thêm trùng truyện offline khi tên file EPUB khác title metadata.
+- Đã chuẩn hóa script kiểm tra trong thư mục scratch để không còn cảnh báo avoid_print khi phân tích mã.
+
+
+3. NHỮNG TÍNH NĂNG CHƯA LÀM (ĐỀ XUẤT CHO TƯƠNG LAI)
+--------------------------------------------------
+- Hệ thống Đăng nhập / Đăng ký:
+  + Hiện tại màn hình Cộng đồng và Cá nhân mới chỉ làm giao diện (Mockup UI). Cần tích hợp Firebase Authentication để tạo tài khoản thật.
+
+- Cơ sở dữ liệu đám mây (Cloud Database):
+  + Tính năng Chat cộng đồng cần kết nối với Firebase Firestore hoặc Socket.IO để có thể gửi và nhận tin nhắn theo thời gian thực (Real-time).
+  + Tính năng đồng bộ hoá dữ liệu (Sync) tài khoản lên mây.
+
+- Triển khai backend thực tế:
+  + Backend REST API + SQLite đã chạy được ở mức local/demo.
+  + Khi triển khai thực tế, cần deploy backend lên VPS/cloud, bật HTTPS và cân nhắc chuyển SQLite sang MySQL/PostgreSQL nếu có nhiều người dùng.
+
+- Phát hành ứng dụng:
+  + Cần cấu hình ký release bằng keystore riêng thay cho debug signing trước khi phát hành chính thức.
+  + Cần bổ sung icon/splash/metadata store hoàn chỉnh trước khi phát hành.
