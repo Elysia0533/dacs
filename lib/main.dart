@@ -4,6 +4,7 @@ import 'screens/home_screen.dart';
 import 'theme/theme_provider.dart';
 import 'theme/reading_settings_provider.dart';
 import 'theme/user_provider.dart';
+import 'theme/audio_provider.dart';
 import 'services/api_service.dart';
 
 void main() async {
@@ -16,6 +17,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => ReadingSettingsProvider()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => AudioProvider()),
       ],
       child: const MyApp(),
     ),

@@ -12,6 +12,7 @@ import 'story_detail_screen.dart';
 import 'explore_screen.dart';
 import 'community_screen.dart';
 import 'profile_screen.dart';
+import '../widgets/mini_audio_player.dart';
 
 enum _LibrarySort { recent, title, progress }
 
@@ -846,13 +847,20 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             )
           : null,
-      body: IndexedStack(
-        index: _currentIndex,
+      body: Column(
         children: [
-          _buildLibraryTab(),
-          const ExploreScreen(),
-          const CommunityScreen(),
-          const ProfileScreen(),
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: [
+                _buildLibraryTab(),
+                const ExploreScreen(),
+                const CommunityScreen(),
+                const ProfileScreen(),
+              ],
+            ),
+          ),
+          const MiniAudioPlayer(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:epubx/epubx.dart' as epubx;
 import 'package:flutter_html/flutter_html.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import '../models/story.dart';
 import '../services/api_service.dart';
 import '../theme/reading_settings_provider.dart';
+import '../theme/audio_provider.dart';
 
 class ChapterReaderScreen extends StatefulWidget {
   final Story story;
@@ -25,11 +25,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // TTS
-  final FlutterTts _tts = FlutterTts();
-  bool _isSpeaking = false;
-  bool _isPaused = false;
-
   // UI
   bool _showBars = true;
 
@@ -38,30 +33,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     super.initState();
     _currentIndex = widget.story.savedChapterIndex;
     _loadEpub();
-    _initTts();
     _scrollController.addListener(_onScroll);
-  }
-
-  Future<void> _initTts() async {
-    await _tts.setLanguage('vi-VN');
-    await _tts.setSpeechRate(0.5);
-    await _tts.setVolume(1.0);
-    _tts.setCompletionHandler(() {
-      if (mounted) {
-        setState(() {
-          _isSpeaking = false;
-          _isPaused = false;
-        });
-      }
-    });
-    _tts.setErrorHandler((msg) {
-      if (mounted) {
-        setState(() {
-          _isSpeaking = false;
-          _isPaused = false;
-        });
-      }
-    });
   }
 
   Future<void> _loadEpub() async {
@@ -145,7 +117,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     if (index < 0 || index >= _chapters.length || index == _currentIndex) {
       return;
     }
-    await _stopTts();
+    context.read<AudioProvider>().stop();
     setState(() => _currentIndex = index);
     ApiService.saveChapterProgress(
       widget.story.id,
@@ -163,32 +135,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     }
   }
 
-  // ── TTS ──
-  Future<void> _toggleTts() async {
-    if (_isSpeaking && !_isPaused) {
-      await _tts.pause();
-      setState(() => _isPaused = true);
-    } else if (_isPaused) {
-      await _tts.speak(_chapters[_currentIndex].plain);
-      setState(() => _isPaused = false);
-    } else {
-      final text = _chapters.isNotEmpty ? _chapters[_currentIndex].plain : '';
-      await _tts.speak(text);
-      setState(() {
-        _isSpeaking = true;
-        _isPaused = false;
-      });
-    }
-  }
-
-  Future<void> _stopTts() async {
-    await _tts.stop();
-    setState(() {
-      _isSpeaking = false;
-      _isPaused = false;
-    });
-  }
-
   void _showToc() {
     _scaffoldKey.currentState?.openDrawer();
   }
@@ -204,7 +150,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
 
   @override
   void dispose() {
-    _tts.stop();
     _scrollController.dispose();
     super.dispose();
   }
@@ -212,6 +157,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<ReadingSettingsProvider>();
+    final audioProvider = context.watch<AudioProvider>();
 
     if (_isLoading) {
       return Scaffold(
@@ -401,14 +347,20 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                           ),
                           IconButton(
                             icon: Icon(
-                              _isSpeaking && !_isPaused
+                              audioProvider.isSpeaking && !audioProvider.isPaused
                                   ? Icons.pause_circle_outline
                                   : Icons.play_circle_outline,
-                              color: _isSpeaking
+                              color: audioProvider.isActive && audioProvider.storyTitle == widget.story.title
                                   ? Theme.of(context).primaryColor
                                   : settings.textColor,
                             ),
-                            onPressed: _toggleTts,
+                            onPressed: () {
+                              if (audioProvider.isActive && audioProvider.storyTitle == widget.story.title) {
+                                audioProvider.togglePlayPause();
+                              } else {
+                                audioProvider.speak(_chapters[_currentIndex].plain, storyTitle: widget.story.title, chapterTitle: _chapters[_currentIndex].title);
+                              }
+                            },
                           ),
                         ],
                       ),
@@ -505,26 +457,26 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                             ),
                           ),
                           // TTS controls
-                          if (_isSpeaking)
+                          if (audioProvider.isActive && audioProvider.storyTitle == widget.story.title)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   FilledButton.tonalIcon(
-                                    onPressed: _toggleTts,
+                                    onPressed: () => audioProvider.togglePlayPause(),
                                     icon: Icon(
-                                      _isPaused
+                                      audioProvider.isPaused
                                           ? Icons.play_arrow
                                           : Icons.pause,
                                     ),
                                     label: Text(
-                                      _isPaused ? 'Tiếp tục' : 'Tạm dừng',
+                                      audioProvider.isPaused ? 'Tiếp tục' : 'Tạm dừng',
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   OutlinedButton.icon(
-                                    onPressed: _stopTts,
+                                    onPressed: () => audioProvider.stop(),
                                     icon: const Icon(Icons.stop),
                                     label: const Text('Dừng'),
                                   ),

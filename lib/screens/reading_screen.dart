@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import '../models/story.dart';
 import '../services/api_service.dart';
 import '../theme/reading_settings_provider.dart';
+import '../theme/audio_provider.dart';
 
 class ReadingScreen extends StatefulWidget {
   final Story story;
@@ -22,30 +22,11 @@ class _ReadingScreenState extends State<ReadingScreen> {
   final ScrollController _scrollController = ScrollController();
   double _scrollProgress = 0.0;
 
-  // TTS
-  final FlutterTts _tts = FlutterTts();
-  bool _isSpeaking = false;
-  bool _isPaused = false;
-  final double _ttsRate = 0.5;
-
   @override
   void initState() {
     super.initState();
-    _initTts();
     _restoreScrollPosition();
     _scrollController.addListener(_onScroll);
-  }
-
-  Future<void> _initTts() async {
-    await _tts.setLanguage('vi-VN');
-    await _tts.setSpeechRate(_ttsRate);
-    await _tts.setVolume(1.0);
-    _tts.setCompletionHandler(() {
-      if (mounted) setState(() { _isSpeaking = false; _isPaused = false; });
-    });
-    _tts.setErrorHandler((msg) {
-      if (mounted) setState(() { _isSpeaking = false; _isPaused = false; });
-    });
   }
 
   Future<void> _restoreScrollPosition() async {
@@ -81,23 +62,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
           : widget.story.content;
 
   // ── TTS ──
-  Future<void> _toggleTts() async {
-    if (_isSpeaking && !_isPaused) {
-      await _tts.pause();
-      setState(() => _isPaused = true);
-    } else if (_isPaused) {
-      await _tts.speak(_currentContent);
-      setState(() => _isPaused = false);
-    } else {
-      await _tts.speak(_currentContent);
-      setState(() { _isSpeaking = true; _isPaused = false; });
-    }
-  }
-
-  Future<void> _stopTts() async {
-    await _tts.stop();
-    setState(() { _isSpeaking = false; _isPaused = false; });
-  }
 
   void _showSettings() {
     showModalBottomSheet(
@@ -110,7 +74,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
 
   @override
   void dispose() {
-    _tts.stop();
     _scrollController.dispose();
     super.dispose();
   }
@@ -118,6 +81,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<ReadingSettingsProvider>();
+    final audioProvider = context.watch<AudioProvider>();
 
     return Scaffold(
       backgroundColor: settings.bgColor,
@@ -202,12 +166,18 @@ class _ReadingScreenState extends State<ReadingScreen> {
                           ),
                           IconButton(
                             icon: Icon(
-                              _isSpeaking && !_isPaused
+                              audioProvider.isSpeaking && !audioProvider.isPaused
                                   ? Icons.pause_circle_outline
                                   : Icons.play_circle_outline,
-                              color: _isSpeaking ? Theme.of(context).primaryColor : settings.textColor,
+                              color: audioProvider.isActive && audioProvider.storyTitle == widget.story.title ? Theme.of(context).primaryColor : settings.textColor,
                             ),
-                            onPressed: _toggleTts,
+                            onPressed: () {
+                              if (audioProvider.isActive && audioProvider.storyTitle == widget.story.title) {
+                                audioProvider.togglePlayPause();
+                              } else {
+                                audioProvider.speak(_currentContent, storyTitle: widget.story.title, chapterTitle: '');
+                              }
+                            },
                           ),
                         ],
                       ),
@@ -272,20 +242,20 @@ class _ReadingScreenState extends State<ReadingScreen> {
                             ),
                           ),
                           // TTS controls
-                          if (_isSpeaking)
+                          if (audioProvider.isActive && audioProvider.storyTitle == widget.story.title)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   FilledButton.tonalIcon(
-                                    onPressed: _toggleTts,
-                                    icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
-                                    label: Text(_isPaused ? 'Tiếp tục' : 'Tạm dừng'),
+                                    onPressed: () => audioProvider.togglePlayPause(),
+                                    icon: Icon(audioProvider.isPaused ? Icons.play_arrow : Icons.pause),
+                                    label: Text(audioProvider.isPaused ? 'Tiếp tục' : 'Tạm dừng'),
                                   ),
                                   const SizedBox(width: 12),
                                   OutlinedButton.icon(
-                                    onPressed: _stopTts,
+                                    onPressed: () => audioProvider.stop(),
                                     icon: const Icon(Icons.stop),
                                     label: const Text('Dừng'),
                                   ),
