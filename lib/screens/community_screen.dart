@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/community_message.dart';
 import '../services/api_service.dart';
 import '../theme/user_provider.dart';
+import '../widgets/app_state_widgets.dart';
 
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key});
@@ -49,7 +50,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => _error = _formatError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -71,9 +72,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_formatError(e))));
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
@@ -88,6 +89,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
         curve: Curves.easeOut,
       );
     });
+  }
+
+  String _formatError(Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '');
+    if (message.contains('FIREBASE_') ||
+        message.toLowerCase().contains('đồng bộ') ||
+        message.toLowerCase().contains('dong bo')) {
+      return 'Chưa bật kết nối cộng đồng cho bản demo này. Hãy kiểm tra cấu hình trước khi chạy APK.';
+    }
+    return message;
   }
 
   @override
@@ -118,51 +129,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
       ),
       body: userProvider.isLoggedIn
           ? _buildChat(context, isDark, textColor, userProvider)
-          : _buildLoginPrompt(context, isDark, textColor),
+          : _buildLoginPrompt(),
     );
   }
 
-  Widget _buildLoginPrompt(BuildContext context, bool isDark, Color textColor) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.forum_outlined,
-                size: 64,
-                color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Cần đăng nhập',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: textColor,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Vào tab Cá nhân để đăng ký hoặc đăng nhập, sau đó bạn có thể gửi tin nhắn cộng đồng.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 15,
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildLoginPrompt() {
+    return const AppEmptyState(
+      icon: Icons.forum_outlined,
+      title: 'Đăng nhập để tham gia',
+      message:
+          'Sau khi đăng nhập ở tab Cá nhân, bạn có thể đọc và gửi tin nhắn cộng đồng.',
     );
   }
 
@@ -211,7 +187,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       ),
                     ),
                     Text(
-                      'Đã kết nối cộng đồng',
+                      'Sẵn sàng trò chuyện',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -229,11 +205,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
         ),
         Expanded(
           child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? const AppLoadingState(message: 'Đang tải tin nhắn...')
               : _error != null
-              ? _buildErrorState(isDark)
+              ? _buildErrorState()
               : _messages.isEmpty
-              ? _buildEmptyState(isDark)
+              ? _buildEmptyState()
               : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -295,46 +271,22 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Widget _buildErrorState(bool isDark) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.cloud_off_rounded,
-              size: 64,
-              color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _error ?? 'Không tải được tin nhắn.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _loadMessages,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Thử lại'),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildErrorState() {
+    return AppErrorState(
+      icon: Icons.cloud_off_rounded,
+      title: 'Không tải được cộng đồng',
+      message: _error ?? 'Không tải được tin nhắn. Vui lòng thử lại.',
+      actionLabel: 'Thử lại',
+      onAction: _loadMessages,
     );
   }
 
-  Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Text(
-        'Chưa có tin nhắn nào',
-        style: TextStyle(
-          color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-        ),
-      ),
+  Widget _buildEmptyState() {
+    return const AppEmptyState(
+      icon: Icons.chat_bubble_outline_rounded,
+      title: 'Chưa có tin nhắn',
+      message:
+          'Hãy bắt đầu cuộc trò chuyện đầu tiên trong cộng đồng đọc truyện.',
     );
   }
 }

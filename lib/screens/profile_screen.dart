@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/firebase_backend_service.dart';
 import '../theme/reading_settings_provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/user_provider.dart';
@@ -7,7 +8,51 @@ import '../theme/user_provider.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
+  void _showAccountUnavailableDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Đồng bộ chưa sẵn sàng'),
+        content: const Text(
+          'Bản demo hiện tại chưa bật cấu hình đăng nhập. Bạn vẫn có thể đọc truyện, tải truyện và dùng thư viện offline bình thường.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đã hiểu'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatAccountError(Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '');
+    final lower = message.toLowerCase();
+
+    if (lower.contains('permission-denied') ||
+        lower.contains('permission_denied') ||
+        lower.contains('cloud_firestore')) {
+      return 'Tài khoản đã đăng nhập nhưng chưa có quyền đồng bộ dữ liệu. Hãy kiểm tra quyền truy cập cho bản demo.';
+    }
+    if (lower.contains('network') ||
+        lower.contains('unavailable') ||
+        lower.contains('timeout')) {
+      return 'Không kết nối được dịch vụ đăng nhập. Hãy kiểm tra mạng rồi thử lại.';
+    }
+    if (lower.contains('firebase')) {
+      return 'Dịch vụ đăng nhập chưa sẵn sàng. Hãy kiểm tra cấu hình bản demo.';
+    }
+    return message;
+  }
+
   void _showLoginDialog(BuildContext context) {
+    if (!FirebaseBackendService.isConfigured ||
+        !FirebaseBackendService.isInitialized) {
+      _showAccountUnavailableDialog(context);
+      return;
+    }
+
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
     final displayNameController = TextEditingController();
@@ -235,10 +280,7 @@ class ProfileScreen extends StatelessWidget {
                       } catch (e) {
                         setDialogState(() {
                           isSubmitting = false;
-                          errorText = e.toString().replaceFirst(
-                            'Exception: ',
-                            '',
-                          );
+                          errorText = _formatAccountError(e);
                         });
                       }
                     },
@@ -352,10 +394,7 @@ class ProfileScreen extends StatelessWidget {
                       } catch (e) {
                         setDialogState(() {
                           isResending = false;
-                          errorText = e.toString().replaceFirst(
-                            'Exception: ',
-                            '',
-                          );
+                          errorText = _formatAccountError(e);
                         });
                       }
                     },
@@ -394,10 +433,7 @@ class ProfileScreen extends StatelessWidget {
                       } catch (e) {
                         setDialogState(() {
                           isSubmitting = false;
-                          errorText = e.toString().replaceFirst(
-                            'Exception: ',
-                            '',
-                          );
+                          errorText = _formatAccountError(e);
                         });
                       }
                     },
@@ -489,9 +525,11 @@ class ProfileScreen extends StatelessWidget {
               context,
               icon: Icons.sync_rounded,
               title: 'Đồng bộ tài khoản',
-              subtitle: userProvider.isLoggedIn
-                  ? userProvider.email
-                  : 'Chưa đăng nhập',
+              subtitle: _syncStatusText(userProvider),
+              onTap: userProvider.isLoggedIn
+                  ? null
+                  : () => _showLoginDialog(context),
+              trailing: _buildSyncStatusIcon(context, userProvider),
             ),
             _buildAudioSection(context, readingSettings, sectionBgColor),
             _buildSectionHeader('Kết nối', sectionBgColor, textColor),
@@ -515,6 +553,42 @@ class ProfileScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  String _syncStatusText(UserProvider userProvider) {
+    if (!FirebaseBackendService.isConfigured) {
+      return 'Chưa bật cho bản demo hiện tại';
+    }
+    if (!FirebaseBackendService.isInitialized) {
+      return 'Đang chờ kết nối';
+    }
+    if (userProvider.isLoggedIn) {
+      return userProvider.email;
+    }
+    return 'Sẵn sàng đăng nhập và đồng bộ';
+  }
+
+  Widget _buildSyncStatusIcon(BuildContext context, UserProvider userProvider) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isReady =
+        FirebaseBackendService.isConfigured &&
+        FirebaseBackendService.isInitialized;
+
+    if (userProvider.isLoggedIn && isReady) {
+      return Icon(Icons.verified_rounded, color: colorScheme.primary);
+    }
+    if (isReady) {
+      return Icon(
+        Icons.login_rounded,
+        color: colorScheme.onSurfaceVariant,
+        size: 22,
+      );
+    }
+    return Icon(
+      Icons.cloud_off_rounded,
+      color: colorScheme.onSurfaceVariant,
+      size: 22,
     );
   }
 
@@ -706,20 +780,25 @@ class ProfileScreen extends StatelessWidget {
     required IconData icon,
     required String title,
     required String subtitle,
+    VoidCallback? onTap,
+    Widget? trailing,
   }) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+      onTap: onTap,
       leading: Icon(icon),
       title: Text(
         title,
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: Icon(
-        Icons.chevron_right,
-        size: 20,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
+      trailing:
+          trailing ??
+          Icon(
+            Icons.chevron_right,
+            size: 20,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
     );
   }
 

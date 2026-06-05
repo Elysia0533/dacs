@@ -38,7 +38,7 @@ class VBookFirebaseConfig {
 
   static FirebaseOptions get currentPlatform {
     if (!isConfigured) {
-      throw StateError('Chua cau hinh dong bo tai khoan cho vBook.');
+      throw StateError('Chưa cấu hình đồng bộ tài khoản cho vBook.');
     }
 
     return FirebaseOptions(

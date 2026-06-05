@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/story.dart';
 import '../services/api_service.dart';
 import '../theme/user_provider.dart';
+import '../widgets/app_state_widgets.dart';
 import 'story_detail_screen.dart';
 
 class ExploreScreen extends StatefulWidget {
@@ -83,10 +84,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
   String _formatLoadError(Object error) {
     final message = error.toString().replaceFirst('Exception: ', '');
     if (message.contains('GOOGLE_DRIVE_API_KEY')) {
-      return 'Thiếu Google Drive API key. Hãy chạy app với --dart-define=GOOGLE_DRIVE_API_KEY=your_key.';
+      return 'Chưa cấu hình khóa truy cập Drive. Hãy kiểm tra tham số chạy app trước khi build APK demo.';
     }
     if (message.contains('GOOGLE_DRIVE_FOLDER_URL')) {
-      return 'Thiếu link thư mục Google Drive. Hãy chạy app với --dart-define=GOOGLE_DRIVE_FOLDER_URL=link_folder hoặc --dart-define=GOOGLE_DRIVE_FOLDER_URLS=link1,link2.';
+      return 'Chưa cấu hình thư mục truyện trên Drive. Hãy kiểm tra link thư mục dùng cho bản demo.';
     }
     return message;
   }
@@ -287,9 +288,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingState(message: 'Đang tải danh sách truyện...')
           : _loadError != null && _serverStories.isEmpty
-          ? _buildLoadErrorState(isDark, accentColor)
+          ? _buildLoadErrorState()
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -316,48 +317,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
-  Widget _buildLoadErrorState(bool isDark, Color accentColor) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.cloud_off_rounded,
-              size: 76,
-              color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Không tải được danh sách truyện',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _loadError ?? 'Vui lòng kiểm tra kết nối hoặc cấu hình Drive.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _loadServerStories,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Thử lại'),
-              style: FilledButton.styleFrom(backgroundColor: accentColor),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildLoadErrorState() {
+    return AppErrorState(
+      icon: Icons.cloud_off_rounded,
+      title: 'Không tải được danh sách truyện',
+      message: _loadError ?? 'Vui lòng kiểm tra kết nối hoặc cấu hình Drive.',
+      actionLabel: 'Thử lại',
+      onAction: _loadServerStories,
     );
   }
 
@@ -417,36 +383,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final stories = _displayStories;
 
     if (stories.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 72,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Không tìm thấy truyện nào',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _searchQuery.isNotEmpty
-                  ? 'Thử tìm với từ khóa khác'
-                  : 'Không có truyện thuộc thể loại này',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
-              ),
-            ),
-          ],
-        ),
+      return AppEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'Không tìm thấy truyện',
+        message: _searchQuery.isNotEmpty
+            ? 'Thử tìm bằng tên truyện, tác giả hoặc bỏ bớt bộ lọc.'
+            : 'Thể loại này hiện chưa có truyện trong danh sách.',
       );
     }
 

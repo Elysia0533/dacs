@@ -21,23 +21,28 @@ class FirebaseBackendService {
   static Future<void> initialize() async {
     if (!isConfigured) {
       debugPrint(
-        'Dong bo tai khoan chua duoc cau hinh. Dang nhap/chat se bi tat cho den khi them FIREBASE_* dart-define.',
+        'Đồng bộ tài khoản chưa được cấu hình. Đăng nhập và chat sẽ tạm tắt trong bản chạy hiện tại.',
       );
       return;
     }
 
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: VBookFirebaseConfig.currentPlatform,
-      );
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: VBookFirebaseConfig.currentPlatform,
+        );
+      }
+      _initialized = true;
+    } catch (e) {
+      _initialized = false;
+      debugPrint('Không thể khởi tạo đồng bộ tài khoản: $e');
     }
-    _initialized = true;
   }
 
   static void _ensureReady() {
     if (!_initialized) {
       throw Exception(
-        'Chua bat dong bo tai khoan. Hay kiem tra cau hinh dich vu truoc khi dang nhap.',
+        'Chưa bật đồng bộ tài khoản. Hãy kiểm tra cấu hình dịch vụ trước khi đăng nhập.',
       );
     }
   }
@@ -60,7 +65,7 @@ class FirebaseBackendService {
       );
       final user = credential.user;
       if (user == null) {
-        throw Exception('Khong the tao tai khoan moi. Vui long thu lai.');
+        throw Exception('Không thể tạo tài khoản mới. Vui lòng thử lại.');
       }
 
       await user.updateDisplayName(displayName);
@@ -86,7 +91,7 @@ class FirebaseBackendService {
       );
       final user = credential.user;
       if (user == null) {
-        throw Exception('Khong the mo phien dang nhap. Vui long thu lai.');
+        throw Exception('Không thể mở phiên đăng nhập. Vui lòng thử lại.');
       }
 
       await user.reload();
@@ -94,7 +99,7 @@ class FirebaseBackendService {
       if (!refreshedUser.emailVerified) {
         await refreshedUser.sendEmailVerification();
         throw Exception(
-          'Email chua xac nhan. He thong da gui lai link xac nhan vao email cua ban.',
+          'Email chưa xác nhận. Hệ thống đã gửi lại link xác nhận vào email của bạn.',
         );
       }
 
@@ -111,7 +116,7 @@ class FirebaseBackendService {
     if (user == null ||
         (user.email ?? '').toLowerCase() != email.toLowerCase()) {
       throw Exception(
-        'Hay dang nhap lai bang email vua dang ky, sau do bam link xac nhan trong hop thu.',
+        'Hãy đăng nhập lại bằng email vừa đăng ký, sau đó bấm link xác nhận trong hộp thư.',
       );
     }
 
@@ -119,7 +124,7 @@ class FirebaseBackendService {
     final refreshedUser = _auth.currentUser ?? user;
     if (!refreshedUser.emailVerified) {
       throw Exception(
-        'Email van chua duoc xac nhan. Hay mo email va bam link xac nhan.',
+        'Email vẫn chưa được xác nhận. Hãy mở email và bấm link xác nhận.',
       );
     }
 
@@ -133,7 +138,7 @@ class FirebaseBackendService {
     if (user == null ||
         (user.email ?? '').toLowerCase() != email.toLowerCase()) {
       throw Exception(
-        'Hay dang nhap lai bang email nay de he thong gui lai link xac nhan.',
+        'Hãy đăng nhập lại bằng email này để hệ thống gửi lại link xác nhận.',
       );
     }
     await user.sendEmailVerification();
@@ -151,7 +156,7 @@ class FirebaseBackendService {
       await _upsertProfile(refreshedUser);
       return _appUserFromFirebase(refreshedUser);
     } on firebase_auth.FirebaseAuthException catch (e) {
-      debugPrint('Khong the lam moi phien dang nhap: ${_authErrorMessage(e)}');
+      debugPrint('Không thể làm mới phiên đăng nhập: ${_authErrorMessage(e)}');
       return null;
     }
   }
@@ -184,7 +189,7 @@ class FirebaseBackendService {
     _ensureReady();
     final user = _auth.currentUser;
     if (user == null || !user.emailVerified) {
-      throw Exception('Can dang nhap va xac nhan email de gui tin nhan.');
+      throw Exception('Cần đăng nhập và xác nhận email để gửi tin nhắn.');
     }
 
     final appUser = await _appUserFromFirebase(user);
@@ -372,14 +377,14 @@ class FirebaseBackendService {
 
   static String _authErrorMessage(firebase_auth.FirebaseAuthException e) {
     return switch (e.code) {
-      'email-already-in-use' => 'Email nay da duoc dang ky.',
-      'invalid-email' => 'Email khong hop le.',
-      'weak-password' => 'Mat khau qua yeu, hay dung it nhat 6 ky tu.',
-      'user-not-found' => 'Khong tim thay tai khoan voi email nay.',
-      'wrong-password' => 'Mat khau khong dung.',
-      'invalid-credential' => 'Email hoac mat khau khong dung.',
-      'too-many-requests' => 'Dang nhap qua nhieu lan. Hay thu lai sau.',
-      _ => e.message ?? 'Loi dang nhap: ${e.code}',
+      'email-already-in-use' => 'Email này đã được đăng ký.',
+      'invalid-email' => 'Email không hợp lệ.',
+      'weak-password' => 'Mật khẩu quá yếu, hãy dùng ít nhất 6 ký tự.',
+      'user-not-found' => 'Không tìm thấy tài khoản với email này.',
+      'wrong-password' => 'Mật khẩu không đúng.',
+      'invalid-credential' => 'Email hoặc mật khẩu không đúng.',
+      'too-many-requests' => 'Đăng nhập quá nhiều lần. Hãy thử lại sau.',
+      _ => e.message ?? 'Lỗi đăng nhập: ${e.code}',
     };
   }
 }
