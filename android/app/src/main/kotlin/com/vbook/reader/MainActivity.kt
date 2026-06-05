@@ -1,4 +1,4 @@
-package com.example.online_story_reader
+package com.vbook.reader
 
 import io.flutter.embedding.android.FlutterActivity
 

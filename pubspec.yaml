@@ -1,5 +1,5 @@
 name: online_story_reader
-description: "A new Flutter project."
+description: "A Flutter reader app for EPUB, PDF, TXT, and Google Drive stories."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -47,6 +47,9 @@ dependencies:
   google_fonts: ^6.2.1
   flutter_html: ^3.0.0-beta.2
   epubx: ^4.0.0
+  firebase_core: ^4.10.0
+  firebase_auth: ^6.5.2
+  cloud_firestore: ^6.5.0
 
 dev_dependencies:
   flutter_test:

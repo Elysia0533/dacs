@@ -7,16 +7,28 @@ class ReadingSettingsProvider extends ChangeNotifier {
   static const String _fontFamilyKey = 'reading_font_family';
   static const String _bgColorKey = 'reading_bg_color';
   static const String _lineHeightKey = 'reading_line_height';
+  static const String _ttsRateKey = 'reading_tts_rate';
+  static const String _ttsPitchKey = 'reading_tts_pitch';
+  static const String _ttsVolumeKey = 'reading_tts_volume';
+  static const String _audioAutoNextKey = 'reading_audio_auto_next';
 
   double _fontSize = 18.0;
   String _fontFamily = 'Merriweather';
   int _bgColorValue = 0xFFF5F0E8; // Kem
   double _lineHeight = 1.7;
+  double _ttsRate = 0.48;
+  double _ttsPitch = 1.0;
+  double _ttsVolume = 1.0;
+  bool _audioAutoNext = true;
 
   double get fontSize => _fontSize;
   String get fontFamily => _fontFamily;
   Color get bgColor => Color(_bgColorValue);
   double get lineHeight => _lineHeight;
+  double get ttsRate => _ttsRate;
+  double get ttsPitch => _ttsPitch;
+  double get ttsVolume => _ttsVolume;
+  bool get audioAutoNext => _audioAutoNext;
 
   // Danh sách các font đọc truyện
   static const List<Map<String, String>> availableFonts = [
@@ -31,7 +43,11 @@ class ReadingSettingsProvider extends ChangeNotifier {
   // Danh sách màu nền
   static const List<Map<String, dynamic>> bgColors = [
     {'label': 'Trắng', 'value': 0xFFFFFFFF, 'textColor': 0xFF1A1A1A},
-    {'label': 'Vàng nhạt (Sepia)', 'value': 0xFFF4ECD8, 'textColor': 0xFF333333},
+    {
+      'label': 'Vàng nhạt (Sepia)',
+      'value': 0xFFF4ECD8,
+      'textColor': 0xFF333333,
+    },
     {'label': 'Xanh nhạt', 'value': 0xFFEAF4EA, 'textColor': 0xFF1A2E1A},
     {'label': 'Xám tối', 'value': 0xFF2C2C2C, 'textColor': 0xFFD0D0D0},
     {'label': 'Đen OLED', 'value': 0xFF000000, 'textColor': 0xFFCCCCCC},
@@ -46,11 +62,9 @@ class ReadingSettingsProvider extends ChangeNotifier {
   }
 
   TextStyle get bodyTextStyle {
-    return _getGoogleFont(_fontFamily).copyWith(
-      fontSize: _fontSize,
-      height: _lineHeight,
-      color: textColor,
-    );
+    return _getGoogleFont(
+      _fontFamily,
+    ).copyWith(fontSize: _fontSize, height: _lineHeight, color: textColor);
   }
 
   TextStyle _getGoogleFont(String name) {
@@ -99,12 +113,40 @@ class ReadingSettingsProvider extends ChangeNotifier {
     _save();
   }
 
+  void setTtsRate(double rate) {
+    _ttsRate = rate.clamp(0.25, 0.85);
+    notifyListeners();
+    _save();
+  }
+
+  void setTtsPitch(double pitch) {
+    _ttsPitch = pitch.clamp(0.7, 1.3);
+    notifyListeners();
+    _save();
+  }
+
+  void setTtsVolume(double volume) {
+    _ttsVolume = volume.clamp(0.2, 1.0);
+    notifyListeners();
+    _save();
+  }
+
+  void setAudioAutoNext(bool value) {
+    _audioAutoNext = value;
+    notifyListeners();
+    _save();
+  }
+
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     _fontSize = prefs.getDouble(_fontSizeKey) ?? 18.0;
     _fontFamily = prefs.getString(_fontFamilyKey) ?? 'Merriweather';
     _bgColorValue = prefs.getInt(_bgColorKey) ?? 0xFFF5F0E8;
     _lineHeight = prefs.getDouble(_lineHeightKey) ?? 1.7;
+    _ttsRate = prefs.getDouble(_ttsRateKey) ?? 0.48;
+    _ttsPitch = prefs.getDouble(_ttsPitchKey) ?? 1.0;
+    _ttsVolume = prefs.getDouble(_ttsVolumeKey) ?? 1.0;
+    _audioAutoNext = prefs.getBool(_audioAutoNextKey) ?? true;
     notifyListeners();
   }
 
@@ -114,5 +156,9 @@ class ReadingSettingsProvider extends ChangeNotifier {
     await prefs.setString(_fontFamilyKey, _fontFamily);
     await prefs.setInt(_bgColorKey, _bgColorValue);
     await prefs.setDouble(_lineHeightKey, _lineHeight);
+    await prefs.setDouble(_ttsRateKey, _ttsRate);
+    await prefs.setDouble(_ttsPitchKey, _ttsPitch);
+    await prefs.setDouble(_ttsVolumeKey, _ttsVolume);
+    await prefs.setBool(_audioAutoNextKey, _audioAutoNext);
   }
 }

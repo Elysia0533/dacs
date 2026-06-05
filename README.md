@@ -1,17 +1,99 @@
-# online_story_reader
+# vBook
 
-A new Flutter project.
+Flutter app doc truyen EPUB, PDF va TXT. App lay catalog/file truyen truc tiep
+tu Google Drive, con tai khoan, xac nhan email, chat cong dong, thu vien ca
+nhan va tien do doc duoc luu bang Firebase Auth + Cloud Firestore.
 
-## Getting Started
+## Kien truc release
 
-This project is a starting point for a Flutter application.
+```text
+Flutter APK
+  -> Google Drive API: catalog va file truyen
+  -> Firebase Auth: dang ky, dang nhap, gui link xac nhan email
+  -> Cloud Firestore: profile, chat cong dong, thu vien, tien do doc
+  -> Local storage: cache truyen, file offline, vi tri doc gan nhat
+```
 
-A few resources to get you started if this is your first Flutter project:
+APK release khong can chay backend Python tren may tinh. Khi mo app, app goi
+Firebase va Google Drive truc tiep.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Chay app
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```sh
+flutter pub get
+flutter run
+```
+
+Man Kham pha lay danh sach truyen truc tiep tu Google Drive. Link Drive co the
+truyen bang `--dart-define` hoac gan san trong
+`lib/services/google_drive_service.dart` tai `hardcodedFolderUrls`.
+
+```sh
+flutter run --dart-define=GOOGLE_DRIVE_API_KEY=your_drive_key
+```
+
+Neu co nhieu thu muc Drive, dung `GOOGLE_DRIVE_FOLDER_URLS` va ngan cach bang
+dau phay, dau cham phay, dau `|`, hoac xuong dong.
+
+## Cau hinh Firebase
+
+1. Tao Firebase project.
+2. Them Android app voi package name `com.vbook.reader`.
+3. Bat `Authentication > Sign-in method > Email/Password`.
+4. Tao Cloud Firestore database.
+5. Sua email admin trong `firestore.rules`.
+6. Deploy rules:
+
+```sh
+firebase deploy --only firestore:rules
+```
+
+Chay app voi Firebase:
+
+```sh
+flutter run ^
+  --dart-define=FIREBASE_API_KEY=your_firebase_api_key ^
+  --dart-define=FIREBASE_APP_ID=your_firebase_app_id ^
+  --dart-define=FIREBASE_MESSAGING_SENDER_ID=your_sender_id ^
+  --dart-define=FIREBASE_PROJECT_ID=your_project_id ^
+  --dart-define=FIREBASE_STORAGE_BUCKET=your_project.appspot.com ^
+  --dart-define=VBOOK_ADMIN_EMAILS=your_admin_email@gmail.com
+```
+
+Co the dien cac gia tri public cua Firebase truc tiep vao
+`lib/firebase_config.dart` neu khong muon truyen `--dart-define` moi lan build.
+Cac gia tri nay khong phai mat khau; bao mat du lieu nam o Firebase Auth va
+Firestore Rules.
+
+## Build APK release
+
+```sh
+flutter build apk --release ^
+  --dart-define=GOOGLE_DRIVE_API_KEY=your_drive_key ^
+  --dart-define=FIREBASE_API_KEY=your_firebase_api_key ^
+  --dart-define=FIREBASE_APP_ID=your_firebase_app_id ^
+  --dart-define=FIREBASE_MESSAGING_SENDER_ID=your_sender_id ^
+  --dart-define=FIREBASE_PROJECT_ID=your_project_id ^
+  --dart-define=FIREBASE_STORAGE_BUCKET=your_project.appspot.com ^
+  --dart-define=VBOOK_ADMIN_EMAILS=your_admin_email@gmail.com
+```
+
+Android package hien tai: `com.vbook.reader`.
+
+## Kiem tra
+
+```sh
+flutter analyze
+flutter test
+flutter build apk --debug
+```
+
+## Ghi chu bao mat
+
+- Google Drive API key neu nam trong APK thi khong bi xem la bi mat tuyet doi.
+  Hay restrict key theo Android package `com.vbook.reader`, SHA-1 release va
+  chi cho phep Google Drive API.
+- Firebase API key/config la dinh danh public cua app, khong phai mat khau.
+  Bao mat Firestore bang `firestore.rules`.
+- SMTP password/backend secret khong can dua vao APK nua vi app da chuyen sang
+  Firebase Auth gui email xac nhan.

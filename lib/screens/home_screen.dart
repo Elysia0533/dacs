@@ -13,6 +13,8 @@ import 'explore_screen.dart';
 import 'community_screen.dart';
 import 'profile_screen.dart';
 
+enum _LibrarySort { recent, title, progress }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -22,8 +24,23 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  final List<Widget?> _lazyTabs = List<Widget?>.filled(4, null);
   List<Story> _personalStories = [];
+  List<Story> _filteredStories = [];
   bool _isLoading = true;
+
+  // Kệ sách settings
+  bool _isGridView = true;
+  int _columnCount = 2;
+  _LibrarySort _sortMode = _LibrarySort.recent;
+
+  // Tìm kiếm
+  bool _isSearching = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  // Banner - truyện đọc gần nhất
+  Story? _lastReadStory;
 
   @override
   void initState() {
@@ -31,10 +48,52 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadStories();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadStories() async {
     setState(() => _isLoading = true);
     _personalStories = await ApiService.fetchPersonalStories();
+    _lastReadStory = await ApiService.getLastReadStory();
+    _applySearch();
     setState(() => _isLoading = false);
+  }
+
+  void _applySearch() {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      _filteredStories = List.from(_personalStories);
+    } else {
+      _filteredStories = _personalStories
+          .where(
+            (s) =>
+                s.title.toLowerCase().contains(query) ||
+                s.author.toLowerCase().contains(query) ||
+                s.genres.any((genre) => genre.toLowerCase().contains(query)),
+          )
+          .toList();
+    }
+    _sortFilteredStories();
+  }
+
+  void _sortFilteredStories() {
+    switch (_sortMode) {
+      case _LibrarySort.recent:
+        break;
+      case _LibrarySort.title:
+        _filteredStories.sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
+        break;
+      case _LibrarySort.progress:
+        _filteredStories.sort(
+          (a, b) => b.savedChapterIndex.compareTo(a.savedChapterIndex),
+        );
+        break;
+    }
   }
 
   void _showSettingsBottomSheet(BuildContext context) {
@@ -43,55 +102,164 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Cài đặt',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      builder: (ctx) {
+        // Dùng StatefulBuilder để cập nhật UI bên trong bottom sheet
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextButton.icon(
-                    icon: const Icon(Icons.folder_open),
-                    label: const Text('Nhập từ máy'),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _importStory();
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const Text(
+                    'Cài đặt kệ sách',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 20),
+                  // Import
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text(
+                        'Nhập truyện từ máy (EPUB / PDF / TXT)',
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _importStory();
+                      },
+                    ),
+                  ),
+                  const Divider(height: 28),
+                  const Text(
+                    'Sắp xếp',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<_LibrarySort>(
+                    initialValue: _sortMode,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: _LibrarySort.recent,
+                        child: Text('Mới thêm'),
+                      ),
+                      DropdownMenuItem(
+                        value: _LibrarySort.title,
+                        child: Text('Tên A-Z'),
+                      ),
+                      DropdownMenuItem(
+                        value: _LibrarySort.progress,
+                        child: Text('Đang đọc trước'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _sortMode = value;
+                        _applySearch();
+                      });
+                      setModalState(() {});
                     },
                   ),
+                  const Divider(height: 28),
+                  // Kiểu hiển thị
+                  const Text(
+                    'Kiểu hiển thị',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _ViewToggleButton(
+                          icon: Icons.grid_view,
+                          label: 'Lưới',
+                          selected: _isGridView,
+                          onTap: () {
+                            setModalState(() {});
+                            setState(() => _isGridView = true);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _ViewToggleButton(
+                          icon: Icons.list,
+                          label: 'Danh sách',
+                          selected: !_isGridView,
+                          onTap: () {
+                            setModalState(() {});
+                            setState(() => _isGridView = false);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Số cột (chỉ hiện khi dạng lưới)
+                  if (_isGridView) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Số cột',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline),
+                          onPressed: _columnCount > 2
+                              ? () {
+                                  setState(() => _columnCount--);
+                                  setModalState(() {});
+                                }
+                              : null,
+                        ),
+                        Text(
+                          '$_columnCount',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: _columnCount < 4
+                              ? () {
+                                  setState(() => _columnCount++);
+                                  setModalState(() {});
+                                }
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
-              const Divider(),
-              ListTile(
-                title: const Text('Kiểu kệ sách'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.grid_view),
-                    SizedBox(width: 8),
-                    Icon(Icons.list),
-                  ],
-                ),
-              ),
-              ListTile(
-                title: const Text('Cột'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(icon: const Icon(Icons.remove), onPressed: () {}),
-                    const Text('2'),
-                    IconButton(icon: const Icon(Icons.add), onPressed: () {}),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -108,7 +276,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final fileName = result.files.single.name;
       final extension = result.files.single.extension ?? '';
 
-      // Copy file vào thư mục ứng dụng để tránh mất đường dẫn tạm thời
       String savedPath = srcPath;
       try {
         final appDir = await getApplicationDocumentsDirectory();
@@ -117,12 +284,18 @@ class _HomeScreenState extends State<HomeScreen> {
         await File(srcPath).copy(destFile.path);
         savedPath = destFile.path;
       } catch (_) {
-        savedPath = srcPath; // fallback nếu copy thất bại
+        savedPath = srcPath;
       }
 
-      String displayTitle = fileName.replaceAll(RegExp(r'\.(epub|pdf|txt)$', caseSensitive: false), '');
+      String displayTitle = fileName.replaceAll(
+        RegExp(r'\.(epub|pdf|txt)$', caseSensitive: false),
+        '',
+      );
       String coverPath = '';
       String description = '';
+      String author = '';
+      List<String> genres = [];
+      int totalChapters = 1;
 
       if (extension.toLowerCase() == 'epub') {
         try {
@@ -130,11 +303,24 @@ class _HomeScreenState extends State<HomeScreen> {
           if (metadata['title'] != null && metadata['title']!.isNotEmpty) {
             displayTitle = metadata['title']!;
           }
-          if (metadata['coverPath'] != null && metadata['coverPath']!.isNotEmpty) {
+          if (metadata['coverPath'] != null &&
+              metadata['coverPath']!.isNotEmpty) {
             coverPath = metadata['coverPath']!;
           }
           if (metadata['description'] != null) {
             description = metadata['description']!;
+          }
+          final metadataAuthor = metadata['author'];
+          if (metadataAuthor is String) {
+            author = metadataAuthor;
+          }
+          final metadataGenres = metadata['genres'];
+          if (metadataGenres is List) {
+            genres = metadataGenres.map((genre) => genre.toString()).toList();
+          }
+          final metadataChapterCount = metadata['chapterCount'];
+          if (metadataChapterCount is int && metadataChapterCount > 0) {
+            totalChapters = metadataChapterCount;
           }
         } catch (e) {
           debugPrint('Không thể đọc metadata EPUB: $e');
@@ -145,9 +331,13 @@ class _HomeScreenState extends State<HomeScreen> {
         id: const Uuid().v4(),
         title: displayTitle,
         description: description,
+        author: author,
+        genres: genres,
+        totalChapters: totalChapters,
         localPath: savedPath,
         isLocal: true,
         iconUrl: coverPath,
+        fileType: extension.toLowerCase(),
       );
 
       if (extension.toLowerCase() == 'txt') {
@@ -158,25 +348,348 @@ class _HomeScreenState extends State<HomeScreen> {
           localPath: savedPath,
           isLocal: true,
           iconUrl: coverPath,
+          fileType: extension.toLowerCase(),
         );
       }
 
       await ApiService.importLocalStory(newStory);
-      if (mounted) _loadStories(); // Refresh
+      if (mounted) _loadStories();
     }
   }
 
   Future<void> _openStory(Story story) async {
-    // Always go through StoryDetailScreen first
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => StoryDetailScreen(story: story)),
     );
-    // Refresh library after returning (user may have read progress updated)
     _loadStories();
   }
 
+  Future<void> _confirmDeleteStory(Story story) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Xóa truyện'),
+        content: Text('Bạn có chắc muốn xóa "${story.title}" khỏi thư viện?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await ApiService.deleteLocalStory(story.id);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Đã xóa "${story.title}"')));
+        _loadStories();
+      }
+    }
+  }
+
+  // Tính % tiến trình đọc
+  String _getProgressLabel(Story story) {
+    if (story.totalChapters > 1 && story.savedChapterIndex > 0) {
+      final pct = ((story.savedChapterIndex / story.totalChapters) * 100)
+          .round();
+      return '$pct% đã đọc';
+    }
+    if (story.savedChapterIndex > 0) {
+      return 'Ch.${story.savedChapterIndex + 1}';
+    }
+    return 'Chưa đọc';
+  }
+
+  Widget _buildLastReadBanner(bool isDark) {
+    if (_lastReadStory == null) return const SizedBox.shrink();
+    final story = _lastReadStory!;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    ImageProvider? coverImage;
+    if (story.iconUrl.isNotEmpty) {
+      if (story.iconUrl.startsWith('http')) {
+        coverImage = NetworkImage(story.iconUrl);
+      } else if (File(story.iconUrl).existsSync()) {
+        coverImage = FileImage(File(story.iconUrl));
+      }
+    }
+
+    return GestureDetector(
+      onTap: () => _openStory(story),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        height: 92,
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(
+            alpha: isDark ? 0.42 : 0.68,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: colorScheme.outline.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              margin: const EdgeInsets.all(10),
+              width: 50,
+              height: 72,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: isDark ? Colors.black26 : Colors.white,
+                image: coverImage != null
+                    ? DecorationImage(image: coverImage, fit: BoxFit.cover)
+                    : null,
+              ),
+              child: coverImage == null
+                  ? Icon(
+                      Icons.menu_book_rounded,
+                      color: colorScheme.onSurfaceVariant,
+                      size: 30,
+                    )
+                  : null,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Đọc tiếp',
+                      style: TextStyle(
+                        color: colorScheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      story.title,
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _getProgressLabel(story),
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Icon(
+                Icons.arrow_forward_ios,
+                color: colorScheme.onSurfaceVariant,
+                size: 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStoryCard(Story story, bool isDark) {
+    final colorScheme = Theme.of(context).colorScheme;
+    ImageProvider? coverImage;
+    if (story.iconUrl.isNotEmpty) {
+      if (story.iconUrl.startsWith('http')) {
+        coverImage = NetworkImage(story.iconUrl);
+      } else if (File(story.iconUrl).existsSync()) {
+        coverImage = FileImage(File(story.iconUrl));
+      }
+    }
+
+    final progressLabel = _getProgressLabel(story);
+    final hasProgress = story.savedChapterIndex > 0;
+
+    if (!_isGridView) {
+      // ── Dạng danh sách ──
+      return GestureDetector(
+        onTap: () => _openStory(story),
+        onLongPress: () => _confirmDeleteStory(story),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            border: Border(
+              bottom: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.12),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 52,
+                  height: 72,
+                  color: isDark
+                      ? const Color(0xFF222624)
+                      : Colors.grey.shade200,
+                  child: coverImage != null
+                      ? Image(image: coverImage, fit: BoxFit.cover)
+                      : Icon(
+                          Icons.menu_book_rounded,
+                          color: colorScheme.onSurfaceVariant,
+                          size: 28,
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      story.title,
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      progressLabel,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: hasProgress
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 20,
+                  color: Colors.red,
+                ),
+                onPressed: () => _confirmDeleteStory(story),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── Dạng lưới ──
+    return GestureDetector(
+      onTap: () => _openStory(story),
+      onLongPress: () => _confirmDeleteStory(story),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: double.infinity,
+                    color: isDark
+                        ? const Color(0xFF222624)
+                        : Colors.grey.shade200,
+                    child: coverImage != null
+                        ? Image(
+                            image: coverImage,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            errorBuilder: (ctx, e, st) => const Icon(
+                              Icons.book,
+                              color: Colors.white38,
+                              size: 40,
+                            ),
+                          )
+                        : const Center(
+                            child: Icon(
+                              Icons.menu_book_rounded,
+                              size: 50,
+                              color: Colors.white54,
+                            ),
+                          ),
+                  ),
+                ),
+                // Progress badge
+                Positioned(
+                  left: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 3,
+                      horizontal: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      progressLabel,
+                      style: TextStyle(
+                        color: hasProgress
+                            ? const Color(0xFFB8F3D2)
+                            : Colors.white70,
+                        fontSize: 10,
+                        fontWeight: hasProgress
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            story.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: colorScheme.onSurface,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              height: 1.22,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLibraryTab() {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -186,188 +699,276 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.library_books, size: 80, color: Colors.grey.shade400),
+            Icon(
+              Icons.library_books_outlined,
+              size: 72,
+              color: colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 16),
             const Text(
               'Thư viện trống',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Hãy sang tab Khám phá để tìm truyện!',
-              style: TextStyle(color: Colors.grey),
+            Text(
+              'Thêm EPUB/PDF/TXT hoặc tải truyện từ Khám phá',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
+            FilledButton.icon(
               onPressed: () => setState(() => _currentIndex = 1),
-              child: const Text('Đi đến Khám phá'),
-            )
+              icon: const Icon(Icons.explore_rounded),
+              label: const Text('Khám phá'),
+            ),
           ],
         ),
       );
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
       children: [
-        Container(
-          margin: const EdgeInsets.all(16.0),
-          height: 120,
-          decoration: BoxDecoration(
-            color: Colors.green.shade800,
-            borderRadius: BorderRadius.circular(12),
-          ),
+        // Banner truyện đọc gần nhất
+        _buildLastReadBanner(isDark),
+
+        // Thanh tìm kiếm + header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(width: 80, color: Colors.grey),
-                ),
-              ),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Text(
-                        'Cải Tạo Ác Nữ - Thông báo',
-                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                        maxLines: 2,
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Bản Bìa Hoàn Thiện 90.0%',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            ],
-          ),
-        ),
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.65,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-            ),
-            itemCount: _personalStories.length,
-            itemBuilder: (context, index) {
-              Story story = _personalStories[index];
-              return GestureDetector(
-                onTap: () => _openStory(story),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Stack(
-                        children: [
-                          Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              color: Colors.grey.shade800,
-                              image: (story.iconUrl.isNotEmpty && (story.iconUrl.startsWith('http') || File(story.iconUrl).existsSync()))
-                                  ? DecorationImage(
-                                      image: story.iconUrl.startsWith('http') 
-                                          ? NetworkImage(story.iconUrl) as ImageProvider
-                                          : FileImage(File(story.iconUrl)),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                            ),
-                            child: (story.iconUrl.isEmpty || (!story.iconUrl.startsWith('http') && !File(story.iconUrl).existsSync()))
-                                ? const Center(child: Icon(Icons.insert_drive_file, size: 50, color: Colors.white54))
-                                : null,
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(4.0),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.6),
-                                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
-                              ),
-                              child: const Text(
-                                '100% Đã đọc',
-                                style: TextStyle(color: Colors.white, fontSize: 10),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                        ],
+                    Text(
+                      _searchQuery.isEmpty ? 'Thư viện' : 'Kết quả',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 2),
                     Text(
-                      story.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      '${_filteredStories.length} truyện',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() => _isGridView = !_isGridView);
+                },
+                tooltip: _isGridView ? 'Danh sách' : 'Lưới',
+                icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+              ),
+              IconButton(
+                onPressed: () => _showSettingsBottomSheet(context),
+                tooltip: 'Cài đặt kệ',
+                icon: const Icon(Icons.tune_rounded),
+              ),
+            ],
           ),
         ),
+
+        // Danh sách truyện
+        Expanded(
+          child: _filteredStories.isEmpty
+              ? Center(
+                  child: Text(
+                    'Không tìm thấy "$_searchQuery"',
+                    style: TextStyle(color: Colors.grey.shade500),
+                  ),
+                )
+              : _isGridView
+              ? GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: _columnCount,
+                    childAspectRatio: _columnCount == 2 ? 0.62 : 0.58,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: 18,
+                  ),
+                  itemCount: _filteredStories.length,
+                  itemBuilder: (context, index) =>
+                      _buildStoryCard(_filteredStories[index], isDark),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  itemCount: _filteredStories.length,
+                  itemBuilder: (context, index) =>
+                      _buildStoryCard(_filteredStories[index], isDark),
+                ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildLazyTab(int index) {
+    if (index == 0) return _buildLibraryTab();
+
+    if (_currentIndex == index) {
+      _lazyTabs[index] ??= switch (index) {
+        1 => const ExploreScreen(),
+        2 => const CommunityScreen(),
+        3 => const ProfileScreen(),
+        _ => const SizedBox.shrink(),
+      };
+    }
+
+    return _lazyTabs[index] ?? const SizedBox.shrink();
+  }
+
+  Widget _buildBody() {
+    return IndexedStack(
+      index: _currentIndex,
+      children: List.generate(4, _buildLazyTab),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: _currentIndex == 0 ? AppBar(
-        title: const Text('Kệ sách'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () => _showSettingsBottomSheet(context),
-          ),
-          IconButton(
-            icon: Icon(themeProvider.themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode),
-            onPressed: () => themeProvider.toggleTheme(),
-          )
-        ],
-      ) : null,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          _buildLibraryTab(),
-          const ExploreScreen(),
-          const CommunityScreen(),
-          const ProfileScreen(),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (i) {
+      appBar: _currentIndex == 0
+          ? AppBar(
+              title: _isSearching
+                  ? TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'Tìm trong thư viện...',
+                        border: InputBorder.none,
+                        hintStyle: TextStyle(
+                          color: isDark ? Colors.grey : Colors.black54,
+                        ),
+                      ),
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value;
+                          _applySearch();
+                        });
+                      },
+                    )
+                  : const Text('Kệ sách'),
+              actions: [
+                IconButton(
+                  icon: Icon(_isSearching ? Icons.close : Icons.search),
+                  onPressed: () {
+                    setState(() {
+                      if (_isSearching) {
+                        _isSearching = false;
+                        _searchQuery = '';
+                        _searchController.clear();
+                        _applySearch();
+                      } else {
+                        _isSearching = true;
+                      }
+                    });
+                  },
+                ),
+                if (!_isSearching) ...[
+                  IconButton(
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                    tooltip: 'Nhập truyện',
+                    onPressed: _importStory,
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      themeProvider.themeMode == ThemeMode.dark
+                          ? Icons.light_mode
+                          : Icons.dark_mode,
+                    ),
+                    onPressed: () => themeProvider.toggleTheme(),
+                  ),
+                ],
+              ],
+            )
+          : null,
+      body: _buildBody(),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (i) {
           setState(() {
             _currentIndex = i;
-            if (i == 0) {
-              _loadStories();
-            }
+            if (i == 0) _loadStories();
           });
         },
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.library_books), label: 'Kệ sách'),
-          BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'Khám phá'),
-          BottomNavigationBarItem(icon: Icon(Icons.forum), label: 'Cộng đồng'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Cá nhân'),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.library_books),
+            label: 'Kệ sách',
+          ),
+          NavigationDestination(icon: Icon(Icons.explore), label: 'Khám phá'),
+          NavigationDestination(icon: Icon(Icons.forum), label: 'Cộng đồng'),
+          NavigationDestination(icon: Icon(Icons.person), label: 'Cá nhân'),
         ],
+      ),
+    );
+  }
+}
+
+// ── Widget con: nút toggle xem lưới/danh sách ──
+class _ViewToggleButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ViewToggleButton({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: selected
+              ? Theme.of(context).primaryColor.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected
+                ? Theme.of(context).primaryColor
+                : Colors.grey.shade300,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: selected ? Theme.of(context).primaryColor : Colors.grey,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Theme.of(context).primaryColor : Colors.grey,
+                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

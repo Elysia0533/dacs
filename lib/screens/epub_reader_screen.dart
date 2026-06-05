@@ -31,11 +31,16 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     setState(() => _isLoading = true);
     try {
       if (widget.story.isFromDrive && widget.story.localPath.isEmpty) {
-        Uint8List bytes = await GoogleDriveService.downloadFileBytes(widget.story.driveFileId);
-        _epubController = EpubController(document: EpubDocument.openData(bytes));
-      } else {
+        Uint8List bytes = await GoogleDriveService.downloadFileBytes(
+          widget.story.driveFileId,
+        );
         _epubController = EpubController(
-          document: EpubDocument.openFile(File(widget.story.localPath)),
+          document: EpubDocument.openData(bytes),
+        );
+      } else {
+        final bytes = await File(widget.story.localPath).readAsBytes();
+        _epubController = EpubController(
+          document: EpubDocument.openData(bytes),
         );
       }
     } catch (e) {
@@ -69,13 +74,18 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F0E8),
+      backgroundColor: isDark
+          ? const Color(0xFF121212)
+          : const Color(0xFFF5F0E8),
       appBar: AppBar(
         backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new,
-              color: isDark ? Colors.white : Colors.black87, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_new,
+            color: isDark ? Colors.white : Colors.black87,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: _epubController == null
@@ -92,7 +102,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
             : EpubViewActualChapter(
                 controller: _epubController!,
                 builder: (chapterValue) {
-                  final title = chapterValue?.chapter?.Title
+                  final title =
+                      chapterValue?.chapter?.Title
                           ?.replaceAll('\n', '')
                           .trim() ??
                       widget.story.title;
@@ -114,8 +125,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         actions: [
           if (_epubController != null)
             IconButton(
-              icon: Icon(Icons.menu_book_outlined,
-                  color: isDark ? Colors.white70 : Colors.black54),
+              icon: Icon(
+                Icons.menu_book_outlined,
+                color: isDark ? Colors.white70 : Colors.black54,
+              ),
               tooltip: 'Mục lục',
               onPressed: _showTableOfContents,
             ),
@@ -124,36 +137,45 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline,
-                            size: 64, color: Colors.redAccent),
-                        const SizedBox(height: 16),
-                        const Text('Không thể mở file',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        Text(_error!,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey.shade600)),
-                      ],
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Colors.redAccent,
                     ),
-                  ),
-                )
-              : EpubView(
-                  controller: _epubController!,
-                  builders: EpubViewBuilders<DefaultBuilderOptions>(
-                    options: const DefaultBuilderOptions(),
-                    chapterDividerBuilder: (chapter) => Divider(
-                      color: isDark ? Colors.white10 : Colors.black12,
-                      height: 1,
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Không thể mở file',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ],
                 ),
+              ),
+            )
+          : EpubView(
+              controller: _epubController!,
+              builders: EpubViewBuilders<DefaultBuilderOptions>(
+                options: const DefaultBuilderOptions(),
+                chapterDividerBuilder: (chapter) => Divider(
+                  color: isDark ? Colors.white10 : Colors.black12,
+                  height: 1,
+                ),
+              ),
+            ),
       floatingActionButton: _epubController != null
           ? FloatingActionButton.small(
               onPressed: _showTableOfContents,
@@ -201,15 +223,19 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
   }
 
   List<_FlatChapter> _flattenChapters(
-      List<epubx.EpubChapter> chapters, int depth) {
+    List<epubx.EpubChapter> chapters,
+    int depth,
+  ) {
     final result = <_FlatChapter>[];
     for (final ch in chapters) {
-      result.add(_FlatChapter(
-        title: ch.Title ?? 'Không có tiêu đề',
-        contentFileName: ch.ContentFileName ?? '',
-        anchor: ch.Anchor,
-        depth: depth,
-      ));
+      result.add(
+        _FlatChapter(
+          title: ch.Title ?? 'Không có tiêu đề',
+          contentFileName: ch.ContentFileName ?? '',
+          anchor: ch.Anchor,
+          depth: depth,
+        ),
+      );
       if (ch.SubChapters != null && ch.SubChapters!.isNotEmpty) {
         result.addAll(_flattenChapters(ch.SubChapters!, depth + 1));
       }
@@ -268,7 +294,10 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [accentColor, accentColor.withValues(alpha: 0.5)],
+                          colors: [
+                            accentColor,
+                            accentColor.withValues(alpha: 0.5),
+                          ],
                         ),
                         borderRadius: BorderRadius.circular(2),
                       ),
@@ -286,8 +315,10 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
                     const Spacer(),
                     if (_flatChapters.isNotEmpty)
                       Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: accentColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
@@ -295,116 +326,127 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
                         child: Text(
                           '${_flatChapters.length} chương',
                           style: TextStyle(
-                              fontSize: 12,
-                              color: accentColor,
-                              fontWeight: FontWeight.w600),
+                            fontSize: 12,
+                            color: accentColor,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                   ],
                 ),
               ),
               Divider(
-                  color: isDark ? Colors.white12 : Colors.black12, height: 1),
+                color: isDark ? Colors.white12 : Colors.black12,
+                height: 1,
+              ),
               // Chapter list
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _flatChapters.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.menu_book,
-                                    size: 56, color: subTextColor),
-                                const SizedBox(height: 12),
-                                Text('Không tìm thấy mục lục',
-                                    style: TextStyle(
-                                        color: subTextColor, fontSize: 15)),
-                              ],
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.menu_book,
+                              size: 56,
+                              color: subTextColor,
                             ),
-                          )
-                        : ListView.separated(
-                            controller: scrollController,
-                            padding: const EdgeInsets.only(bottom: 24),
-                            itemCount: _flatChapters.length,
-                            separatorBuilder: (_, __) => Divider(
-                              color: isDark ? Colors.white12 : Colors.black12,
-                              height: 1,
-                              indent: 20,
-                              endIndent: 20,
+                            const SizedBox(height: 12),
+                            Text(
+                              'Không tìm thấy mục lục',
+                              style: TextStyle(
+                                color: subTextColor,
+                                fontSize: 15,
+                              ),
                             ),
-                            itemBuilder: (context, index) {
-                              final ch = _flatChapters[index];
-                              final isMainChapter = ch.depth == 0;
-                              final isCurrent = ch.title == widget.currentChapterTitle;
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.only(bottom: 24),
+                        itemCount: _flatChapters.length,
+                        separatorBuilder: (context, index) => Divider(
+                          color: isDark ? Colors.white12 : Colors.black12,
+                          height: 1,
+                          indent: 20,
+                          endIndent: 20,
+                        ),
+                        itemBuilder: (context, index) {
+                          final ch = _flatChapters[index];
+                          final isMainChapter = ch.depth == 0;
+                          final isCurrent =
+                              ch.title == widget.currentChapterTitle;
 
-                              return InkWell(
-                                onTap: () {
-                                  // Navigate using CFI or content file
-                                  final cfiAnchor = ch.anchor != null
-                                      ? '#${ch.anchor}'
-                                      : '';
-                                  widget.controller.gotoEpubCfi(
-                                    'epubcfi(/6/${ch.contentFileName}$cfiAnchor)',
-                                  );
-                                  Navigator.pop(context);
-                                },
-                                child: Container(
-                                  color: isCurrent
-                                      ? accentColor.withValues(alpha: 0.08)
-                                      : Colors.transparent,
-                                  padding: EdgeInsets.only(
-                                    left: 20.0 + ch.depth * 16.0,
-                                    right: 20,
-                                    top: isMainChapter ? 14 : 10,
-                                    bottom: isMainChapter ? 14 : 10,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      if (isCurrent)
-                                        Container(
-                                          width: 3,
-                                          height: 20,
-                                          margin: const EdgeInsets.only(right: 12),
-                                          decoration: BoxDecoration(
-                                            color: accentColor,
-                                            borderRadius: BorderRadius.circular(2),
-                                          ),
-                                        ),
-                                      Expanded(
-                                        child: Text(
-                                          ch.title,
-                                          style: TextStyle(
-                                            fontSize: isMainChapter ? 15 : 13,
-                                            fontWeight: isMainChapter
-                                                ? FontWeight.w600
-                                                : FontWeight.normal,
-                                            color: isCurrent
-                                                ? accentColor
-                                                : isMainChapter
-                                                    ? textColor
-                                                    : subTextColor,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      if (!isMainChapter)
-                                        const SizedBox(width: 4)
-                                      else
-                                        Icon(
-                                          Icons.chevron_right,
-                                          size: 18,
-                                          color: isCurrent
-                                              ? accentColor
-                                              : subTextColor,
-                                        ),
-                                    ],
-                                  ),
-                                ),
+                          return InkWell(
+                            onTap: () {
+                              // Navigate using CFI or content file
+                              final cfiAnchor = ch.anchor != null
+                                  ? '#${ch.anchor}'
+                                  : '';
+                              widget.controller.gotoEpubCfi(
+                                'epubcfi(/6/${ch.contentFileName}$cfiAnchor)',
                               );
+                              Navigator.pop(context);
                             },
-                          ),
+                            child: Container(
+                              color: isCurrent
+                                  ? accentColor.withValues(alpha: 0.08)
+                                  : Colors.transparent,
+                              padding: EdgeInsets.only(
+                                left: 20.0 + ch.depth * 16.0,
+                                right: 20,
+                                top: isMainChapter ? 14 : 10,
+                                bottom: isMainChapter ? 14 : 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  if (isCurrent)
+                                    Container(
+                                      width: 3,
+                                      height: 20,
+                                      margin: const EdgeInsets.only(right: 12),
+                                      decoration: BoxDecoration(
+                                        color: accentColor,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: Text(
+                                      ch.title,
+                                      style: TextStyle(
+                                        fontSize: isMainChapter ? 15 : 13,
+                                        fontWeight: isMainChapter
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
+                                        color: isCurrent
+                                            ? accentColor
+                                            : isMainChapter
+                                            ? textColor
+                                            : subTextColor,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (!isMainChapter)
+                                    const SizedBox(width: 4)
+                                  else
+                                    Icon(
+                                      Icons.chevron_right,
+                                      size: 18,
+                                      color: isCurrent
+                                          ? accentColor
+                                          : subTextColor,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
               ),
             ],
           ),

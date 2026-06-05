@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/google_drive_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'chapter_reader_screen.dart';
+import 'epub_reader_screen.dart';
 import 'pdf_reader_screen.dart';
 import 'reading_screen.dart';
 
@@ -20,6 +21,9 @@ class StoryDetailScreen extends StatefulWidget {
 class _StoryDetailScreenState extends State<StoryDetailScreen> {
   bool _isDownloading = false;
   bool _descExpanded = false;
+  double? _downloadProgress;
+  int _downloadedBytes = 0;
+  int? _downloadTotalBytes;
   late Story _story;
 
   @override
@@ -31,59 +35,208 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   Future<void> _addToLibrary() async {
     await ApiService.importLocalStory(_story);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã thêm vào Kệ sách!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đã thêm vào Kệ sách!')));
     }
   }
 
   Future<void> _downloadStory() async {
     if (!_story.isFromDrive || _story.driveFileId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Truyện này không hỗ trợ tải xuống trực tiếp.')),
+        const SnackBar(
+          content: Text('Truyện này không hỗ trợ tải xuống trực tiếp.'),
+        ),
       );
       return;
     }
-    setState(() => _isDownloading = true);
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = 0;
+      _downloadedBytes = 0;
+      _downloadTotalBytes = null;
+    });
     try {
-      final bytes = await GoogleDriveService.downloadFileBytes(_story.driveFileId);
+      final bytes = await GoogleDriveService.downloadFileBytes(
+        _story.driveFileId,
+        onProgress: (receivedBytes, totalBytes) {
+          if (!mounted) return;
+          setState(() {
+            _downloadedBytes = receivedBytes;
+            _downloadTotalBytes = totalBytes;
+            _downloadProgress = totalBytes != null && totalBytes > 0
+                ? receivedBytes / totalBytes
+                : null;
+          });
+        },
+      );
       final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/${_story.title}');
+
+      // Xác định đuôi file dựa trên dữ liệu thực tế của bytes (magic bytes)
+      // Mặc định thử epub, nếu không nhận ra thì dùng txt
+      String ext = 'epub';
+      if (bytes.length >= 4) {
+        // PDF magic: %PDF = 0x25 0x50 0x44 0x46
+        if (bytes[0] == 0x25 &&
+            bytes[1] == 0x50 &&
+            bytes[2] == 0x44 &&
+            bytes[3] == 0x46) {
+          ext = 'pdf';
+          // ZIP/EPUB magic: PK = 0x50 0x4B
+        } else if (bytes[0] == 0x50 && bytes[1] == 0x4B) {
+          ext = 'epub';
+        } else {
+          ext = 'txt';
+        }
+      }
+
+      // Tên file an toàn (xóa ký tự đặc biệt) + đuôi mở rộng đúng
+      final safeTitle = _story.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final file = File('${dir.path}/$safeTitle.$ext');
       await file.writeAsBytes(bytes);
-      Story updatedStory = _story.copyWith(localPath: file.path, isLocal: true);
+
+      // Trích xuất metadata nếu là epub
+      String iconUrl = _story.iconUrl;
+      String description = _story.description;
+      String author = _story.author;
+      List<String> genres = _story.genres;
+      int totalChapters = _story.totalChapters;
+      String content = _story.content;
+      if (ext == 'epub') {
+        final metadata = await ApiService.extractEpubMetadata(file.path);
+        if (metadata['coverPath'] != null &&
+            metadata['coverPath']!.isNotEmpty) {
+          iconUrl = metadata['coverPath']!;
+        }
+        if (metadata['description'] != null &&
+            metadata['description']!.isNotEmpty) {
+          description = metadata['description']!;
+        }
+        final metadataAuthor = metadata['author'];
+        if (metadataAuthor is String && metadataAuthor.isNotEmpty) {
+          author = metadataAuthor;
+        }
+        final metadataGenres = metadata['genres'];
+        if (metadataGenres is List) {
+          genres = metadataGenres.map((genre) => genre.toString()).toList();
+        }
+        final metadataChapterCount = metadata['chapterCount'];
+        if (metadataChapterCount is int && metadataChapterCount > 0) {
+          totalChapters = metadataChapterCount;
+        }
+      } else if (ext == 'txt') {
+        content = await file.readAsString();
+      }
+
+      Story updatedStory = _story.copyWith(
+        localPath: file.path,
+        isLocal: true,
+        iconUrl: iconUrl,
+        description: description,
+        author: author,
+        genres: genres,
+        totalChapters: totalChapters,
+        content: content,
+        fileType: ext,
+      );
       await ApiService.importLocalStory(updatedStory);
-      await ApiService.updateLocalStory(updatedStory);
-      setState(() => _story = updatedStory);
+      final savedStory = await ApiService.updateLocalStory(updatedStory);
+      setState(() => _story = savedStory ?? updatedStory);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tải xuống thành công!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Lưu về máy thành công!')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi tải xuống: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi tải xuống: $e')));
       }
     } finally {
-      if (mounted) setState(() => _isDownloading = false);
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = null;
+          _downloadedBytes = 0;
+          _downloadTotalBytes = null;
+        });
+      }
     }
   }
+
+  String get _downloadButtonLabel {
+    if (!_isDownloading) return 'Lưu về máy';
+    final progress = _downloadProgress;
+    if (progress == null) return 'Đang tải...';
+    final percent = (progress.clamp(0.0, 1.0) * 100).round();
+    return 'Đang tải $percent%';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(1)} MB';
+  }
+
+  String get _storyFileType {
+    if (_story.fileType.isNotEmpty) return _story.fileType.toLowerCase();
+    if (_story.localPath.isNotEmpty && _story.localPath.contains('.')) {
+      return _story.localPath.split('.').last.toLowerCase();
+    }
+    return 'epub';
+  }
+
+  bool get _canReadOnline =>
+      _story.isFromDrive &&
+      _story.localPath.isEmpty &&
+      (_storyFileType == 'epub' || _storyFileType == 'pdf');
 
   void _startReading() {
     final localPath = _story.localPath;
     if (localPath.isEmpty) {
+      if (_story.isFromDrive && _story.driveFileId.isNotEmpty) {
+        if (_storyFileType == 'pdf') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => PdfReaderScreen(story: _story)),
+          );
+          return;
+        }
+        if (_storyFileType == 'epub') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => EpubReaderScreen(story: _story)),
+          );
+          return;
+        }
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng tải xuống truyện trước khi đọc.')),
+        const SnackBar(
+          content: Text(
+            'Vui lòng lưu truyện về máy trước khi đọc định dạng này.',
+          ),
+        ),
       );
       return;
     }
     if (localPath.endsWith('.pdf')) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => PdfReaderScreen(story: _story)));
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PdfReaderScreen(story: _story)),
+      );
     } else if (localPath.endsWith('.epub')) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => ChapterReaderScreen(story: _story)));
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ChapterReaderScreen(story: _story)),
+      );
     } else {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => ReadingScreen(story: _story)));
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ReadingScreen(story: _story)),
+      );
     }
   }
 
@@ -103,7 +256,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       height: height,
       decoration: BoxDecoration(
         color: Colors.grey.shade800,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.4),
@@ -116,7 +269,13 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             : null,
       ),
       child: imageProvider == null
-          ? const Center(child: Icon(Icons.menu_book_rounded, size: 64, color: Colors.white38))
+          ? const Center(
+              child: Icon(
+                Icons.menu_book_rounded,
+                size: 64,
+                color: Colors.white38,
+              ),
+            )
           : null,
     );
   }
@@ -124,9 +283,11 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
+      backgroundColor: colorScheme.surface,
       body: CustomScrollView(
         slivers: [
           // ─── Sliver App Bar with blurred cover ───
@@ -134,7 +295,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             expandedHeight: size.height * 0.38,
             pinned: true,
             stretch: true,
-            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            backgroundColor: colorScheme.surface,
             leading: IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(6),
@@ -142,7 +303,11 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                   color: Colors.black.withValues(alpha: 0.35),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+                child: const Icon(
+                  Icons.arrow_back_ios_new,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
               onPressed: () => Navigator.pop(context),
             ),
@@ -152,20 +317,22 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                 fit: StackFit.expand,
                 children: [
                   // Blurred bg cover
-                  Builder(builder: (_) {
-                    final iconUrl = _story.iconUrl;
-                    ImageProvider? ip;
-                    if (iconUrl.isNotEmpty) {
-                      if (iconUrl.startsWith('http')) {
-                        ip = NetworkImage(iconUrl);
-                      } else if (File(iconUrl).existsSync()) {
-                        ip = FileImage(File(iconUrl));
+                  Builder(
+                    builder: (_) {
+                      final iconUrl = _story.iconUrl;
+                      ImageProvider? ip;
+                      if (iconUrl.isNotEmpty) {
+                        if (iconUrl.startsWith('http')) {
+                          ip = NetworkImage(iconUrl);
+                        } else if (File(iconUrl).existsSync()) {
+                          ip = FileImage(File(iconUrl));
+                        }
                       }
-                    }
-                    return ip != null
-                        ? Image(image: ip, fit: BoxFit.cover)
-                        : Container(color: const Color(0xFF2C2C2C));
-                  }),
+                      return ip != null
+                          ? Image(image: ip, fit: BoxFit.cover)
+                          : Container(color: const Color(0xFF2C2C2C));
+                    },
+                  ),
                   // Gradient overlay
                   DecoratedBox(
                     decoration: BoxDecoration(
@@ -199,16 +366,16 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                                   color: Colors.white,
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
-                                  shadows: [Shadow(blurRadius: 8, color: Colors.black)],
+                                  shadows: [
+                                    Shadow(blurRadius: 8, color: Colors.black),
+                                  ],
                                 ),
                                 maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 6),
                               _buildInfoChip(
-                                _story.localPath.isNotEmpty
-                                    ? _story.localPath.split('.').last.toUpperCase()
-                                    : 'EPUB',
+                                _storyFileType.toUpperCase(),
                                 Colors.white.withValues(alpha: 0.25),
                               ),
                             ],
@@ -226,45 +393,113 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    flex: 3,
-                    child: FilledButton.icon(
-                      onPressed: _startReading,
-                      icon: const Icon(Icons.menu_book_rounded, size: 20),
-                      label: Text(
-                        _story.savedChapterIndex > 0
-                            ? 'Đọc tiếp (Ch.${_story.savedChapterIndex + 1})'
-                            : 'Đọc ngay',
-                      ),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  if (_story.isFromDrive && _story.localPath.isEmpty) ...[
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isDownloading ? null : _downloadStory,
-                        icon: _isDownloading
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.download_rounded, size: 20),
-                        label: const Text('Tải về'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  Row(
+                    children: [
+                      // Nếu là truyện từ Drive và CHƯA tải về: chỉ hiện nút "Lưu về máy"
+                      if (_story.isFromDrive && _story.localPath.isEmpty) ...[
+                        if (_canReadOnline) ...[
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _isDownloading ? null : _startReading,
+                              icon: const Icon(
+                                Icons.play_arrow_rounded,
+                                size: 20,
+                              ),
+                              label: const Text('Đọc online'),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isDownloading ? null : _downloadStory,
+                            icon: _isDownloading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.download_rounded, size: 20),
+                            label: Text(_downloadButtonLabel),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
                         ),
+                      ] else ...[
+                        // Đã tải về hoặc là truyện local: hiện nút "Đọc ngay"
+                        Expanded(
+                          flex: 3,
+                          child: FilledButton.icon(
+                            onPressed: _startReading,
+                            icon: const Icon(Icons.menu_book_rounded, size: 20),
+                            label: Text(
+                              _story.savedChapterIndex > 0
+                                  ? 'Đọc tiếp (Ch.${_story.savedChapterIndex + 1})'
+                                  : 'Đọc ngay',
+                            ),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (!_story.isLocal) ...[
+                          const SizedBox(width: 12),
+                          IconButton.outlined(
+                            onPressed: _addToLibrary,
+                            icon: const Icon(Icons.library_add_rounded),
+                            tooltip: 'Thêm vào kệ',
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
+                  if (_isDownloading) ...[
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(value: _downloadProgress),
+                    const SizedBox(height: 6),
+                    Text(
+                      _downloadTotalBytes == null
+                          ? _formatBytes(_downloadedBytes)
+                          : '${_formatBytes(_downloadedBytes)} / ${_formatBytes(_downloadTotalBytes!)}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: isDark
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade600,
+                        fontSize: 12,
                       ),
-                    ),
-                  ] else if (!_story.isLocal) ...[
-                    IconButton.outlined(
-                      onPressed: _addToLibrary,
-                      icon: const Icon(Icons.library_add_rounded),
-                      tooltip: 'Thêm vào kệ',
                     ),
                   ],
                 ],
@@ -283,15 +518,21 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                     Row(
                       children: [
                         Container(
-                          width: 4, height: 20,
+                          width: 4,
+                          height: 20,
                           decoration: BoxDecoration(
                             color: Theme.of(context).primaryColor,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
                         const SizedBox(width: 10),
-                        const Text('Giới thiệu',
-                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Giới thiệu',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -320,7 +561,8 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: () => setState(() => _descExpanded = !_descExpanded),
+                      onPressed: () =>
+                          setState(() => _descExpanded = !_descExpanded),
                       child: Text(_descExpanded ? 'Thu gọn ▲' : 'Xem thêm ▼'),
                     ),
                   ],
@@ -342,7 +584,14 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
         color: bg,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(label, style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w500)),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          color: Colors.white70,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
     );
   }
 }

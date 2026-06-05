@@ -1,11 +1,11 @@
 {
-    "name": "online_story_reader",
-    "short_name": "online_story_reader",
+    "name": "vBook",
+    "short_name": "vBook",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Read EPUB, PDF, TXT, and Google Drive stories.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

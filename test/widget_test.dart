@@ -1,30 +1,44 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:online_story_reader/main.dart';
+import 'package:online_story_reader/models/story.dart';
+import 'package:online_story_reader/theme/reading_settings_provider.dart';
+import 'package:online_story_reader/theme/theme_provider.dart';
+import 'package:online_story_reader/theme/user_provider.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('app smoke test', (WidgetTester tester) async {
+    final cachedServerStory = Story(
+      id: 'cached-story',
+      title: 'Cached Story',
+      iconUrl: 'cached-cover',
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    SharedPreferences.setMockInitialValues({
+      'local_imported_stories': <String>[],
+      'drive_story_catalog_cache': <String>[
+        json.encode(cachedServerStory.toJson()),
+      ],
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => ReadingSettingsProvider()),
+          ChangeNotifierProvider(create: (_) => UserProvider()),
+        ],
+        child: const MyApp(),
+      ),
+    );
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.byType(MaterialApp), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
   });
 }
