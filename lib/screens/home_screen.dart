@@ -8,6 +8,7 @@ import 'dart:io';
 import '../models/story.dart';
 import '../services/api_service.dart';
 import '../theme/theme_provider.dart';
+import '../widgets/story_cover_image.dart';
 import 'story_detail_screen.dart';
 import 'explore_screen.dart';
 import 'community_screen.dart';
@@ -406,15 +407,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final story = _lastReadStory!;
     final colorScheme = Theme.of(context).colorScheme;
 
-    ImageProvider? coverImage;
-    if (story.iconUrl.isNotEmpty) {
-      if (story.iconUrl.startsWith('http')) {
-        coverImage = NetworkImage(story.iconUrl);
-      } else if (File(story.iconUrl).existsSync()) {
-        coverImage = FileImage(File(story.iconUrl));
-      }
-    }
-
     return GestureDetector(
       onTap: () => _openStory(story),
       child: Container(
@@ -431,24 +423,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Row(
           children: [
-            Container(
-              margin: const EdgeInsets.all(10),
-              width: 50,
-              height: 72,
-              decoration: BoxDecoration(
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: StoryCoverImage(
+                imagePath: story.iconUrl,
+                width: 50,
+                height: 72,
                 borderRadius: BorderRadius.circular(8),
-                color: isDark ? Colors.black26 : Colors.white,
-                image: coverImage != null
-                    ? DecorationImage(image: coverImage, fit: BoxFit.cover)
-                    : null,
+                backgroundColor: isDark ? Colors.black26 : Colors.white,
               ),
-              child: coverImage == null
-                  ? Icon(
-                      Icons.menu_book_rounded,
-                      color: colorScheme.onSurfaceVariant,
-                      size: 30,
-                    )
-                  : null,
             ),
             Expanded(
               child: Padding(
@@ -504,15 +487,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildStoryCard(Story story, bool isDark) {
     final colorScheme = Theme.of(context).colorScheme;
-    ImageProvider? coverImage;
-    if (story.iconUrl.isNotEmpty) {
-      if (story.iconUrl.startsWith('http')) {
-        coverImage = NetworkImage(story.iconUrl);
-      } else if (File(story.iconUrl).existsSync()) {
-        coverImage = FileImage(File(story.iconUrl));
-      }
-    }
-
     final progressLabel = _getProgressLabel(story);
     final hasProgress = story.savedChapterIndex > 0;
 
@@ -533,22 +507,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Row(
             children: [
-              ClipRRect(
+              StoryCoverImage(
+                imagePath: story.iconUrl,
+                width: 52,
+                height: 72,
                 borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  width: 52,
-                  height: 72,
-                  color: isDark
-                      ? const Color(0xFF222624)
-                      : Colors.grey.shade200,
-                  child: coverImage != null
-                      ? Image(image: coverImage, fit: BoxFit.cover)
-                      : Icon(
-                          Icons.menu_book_rounded,
-                          color: colorScheme.onSurfaceVariant,
-                          size: 28,
-                        ),
-                ),
+                backgroundColor: isDark
+                    ? const Color(0xFF222624)
+                    : Colors.grey.shade200,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -601,33 +567,14 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: Stack(
               children: [
-                ClipRRect(
+                StoryCoverImage(
+                  imagePath: story.iconUrl,
+                  width: double.infinity,
+                  height: double.infinity,
                   borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    width: double.infinity,
-                    color: isDark
-                        ? const Color(0xFF222624)
-                        : Colors.grey.shade200,
-                    child: coverImage != null
-                        ? Image(
-                            image: coverImage,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            errorBuilder: (ctx, e, st) => const Icon(
-                              Icons.book,
-                              color: Colors.white38,
-                              size: 40,
-                            ),
-                          )
-                        : const Center(
-                            child: Icon(
-                              Icons.menu_book_rounded,
-                              size: 50,
-                              color: Colors.white54,
-                            ),
-                          ),
-                  ),
+                  backgroundColor: isDark
+                      ? const Color(0xFF222624)
+                      : Colors.grey.shade200,
                 ),
                 Positioned(
                   left: 6,

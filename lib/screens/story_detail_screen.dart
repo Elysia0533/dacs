@@ -8,6 +8,7 @@ import 'chapter_reader_screen.dart';
 import 'epub_reader_screen.dart';
 import 'pdf_reader_screen.dart';
 import 'reading_screen.dart';
+import '../widgets/story_cover_image.dart';
 
 class StoryDetailScreen extends StatefulWidget {
   final Story story;
@@ -235,42 +236,28 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   }
 
   Widget _buildCoverImage(double width, double height) {
-    final iconUrl = _story.iconUrl;
-    ImageProvider? imageProvider;
-    if (iconUrl.isNotEmpty) {
-      if (iconUrl.startsWith('http')) {
-        imageProvider = NetworkImage(iconUrl);
-      } else if (File(iconUrl).existsSync()) {
-        imageProvider = FileImage(File(iconUrl));
-      }
-    }
-
-    return Container(
+    return SizedBox(
       width: width,
       height: height,
-      decoration: BoxDecoration(
-        color: Colors.grey.shade800,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-        image: imageProvider != null
-            ? DecorationImage(image: imageProvider, fit: BoxFit.cover)
-            : null,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: StoryCoverImage(
+          imagePath: _story.iconUrl,
+          width: width,
+          height: height,
+          borderRadius: BorderRadius.circular(8),
+          backgroundColor: Colors.grey.shade800,
+        ),
       ),
-      child: imageProvider == null
-          ? const Center(
-              child: Icon(
-                Icons.menu_book_rounded,
-                size: 64,
-                color: Colors.white38,
-              ),
-            )
-          : null,
     );
   }
 
@@ -309,21 +296,11 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Builder(
-                    builder: (_) {
-                      final iconUrl = _story.iconUrl;
-                      ImageProvider? ip;
-                      if (iconUrl.isNotEmpty) {
-                        if (iconUrl.startsWith('http')) {
-                          ip = NetworkImage(iconUrl);
-                        } else if (File(iconUrl).existsSync()) {
-                          ip = FileImage(File(iconUrl));
-                        }
-                      }
-                      return ip != null
-                          ? Image(image: ip, fit: BoxFit.cover)
-                          : Container(color: const Color(0xFF2C2C2C));
-                    },
+                  StoryCoverImage(
+                    imagePath: _story.iconUrl,
+                    width: double.infinity,
+                    height: double.infinity,
+                    backgroundColor: const Color(0xFF2C2C2C),
                   ),
                   DecoratedBox(
                     decoration: BoxDecoration(

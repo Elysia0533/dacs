@@ -4,6 +4,7 @@ import '../models/story.dart';
 import '../services/api_service.dart';
 import '../theme/user_provider.dart';
 import '../widgets/app_state_widgets.dart';
+import '../widgets/story_cover_image.dart';
 import 'story_detail_screen.dart';
 
 class ExploreScreen extends StatefulWidget {
@@ -490,28 +491,14 @@ class _StoryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ClipRRect(
+            child: StoryCoverImage(
+              imagePath: story.iconUrl,
+              width: double.infinity,
+              height: double.infinity,
               borderRadius: BorderRadius.circular(8),
-              child: story.iconUrl.isNotEmpty
-                  ? Image.network(
-                      story.iconUrl,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      loadingBuilder: (ctx, child, progress) {
-                        if (progress == null) return child;
-                        return Container(
-                          color: isDark
-                              ? Colors.grey.shade800
-                              : Colors.grey.shade300,
-                          child: const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        );
-                      },
-                      errorBuilder: (ctx, err, stack) =>
-                          _PlaceholderCover(isDark: isDark),
-                    )
-                  : _PlaceholderCover(isDark: isDark),
+              backgroundColor: isDark
+                  ? Colors.grey.shade800
+                  : Colors.grey.shade300,
             ),
           ),
           const SizedBox(height: 6),
@@ -539,26 +526,6 @@ class _StoryCard extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _PlaceholderCover extends StatelessWidget {
-  final bool isDark;
-  const _PlaceholderCover({required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-      child: Center(
-        child: Icon(
-          Icons.book,
-          size: 40,
-          color: isDark ? Colors.white38 : Colors.black38,
-        ),
       ),
     );
   }

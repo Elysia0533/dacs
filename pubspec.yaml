@@ -39,4 +39,6 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/branding/
+    - assets/covers/
     - assets/offline_stories/
