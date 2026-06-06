@@ -18,6 +18,8 @@ class GoogleDriveService {
     'https://drive.google.com/drive/folders/135QOQhnFAvSHoqbnr8aZmXbuFnZ3DBJJ?usp=drive_link',
     'https://drive.google.com/drive/folders/1h8xikg-VhsrSW-J5UBb5xLstn03L86tU?usp=drive_link',
     'https://drive.google.com/drive/folders/1X0mttYF0vCqT2ky1MQxpwPufksQoenj9?usp=drive_link',
+    'https://drive.google.com/drive/folders/1JdFVB8f_7j6KvWb4DJIZsmFWZmokuSFh',
+    'https://drive.google.com/drive/folders/10qaC4oMuVDtc6i8reqOEgGYf9MkgeS1V',
   ];
 
   static const String _folderMimeType = 'application/vnd.google-apps.folder';
