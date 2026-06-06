@@ -11,8 +11,12 @@ import '../models/story.dart';
 class FirebaseBackendService {
   static bool _initialized = false;
 
-  static bool get isConfigured => VBookFirebaseConfig.isConfigured;
+  static bool get isConfigured =>
+      VBookFirebaseConfig.isConfigured || _canUseNativeAndroidConfig;
   static bool get isInitialized => _initialized;
+
+  static bool get _canUseNativeAndroidConfig =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   static FirebaseFirestore get _db => FirebaseFirestore.instance;
   static firebase_auth.FirebaseAuth get _auth =>
@@ -28,9 +32,13 @@ class FirebaseBackendService {
 
     try {
       if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: VBookFirebaseConfig.currentPlatform,
-        );
+        if (VBookFirebaseConfig.isConfigured) {
+          await Firebase.initializeApp(
+            options: VBookFirebaseConfig.currentPlatform,
+          );
+        } else {
+          await Firebase.initializeApp();
+        }
       }
       _initialized = true;
     } catch (e) {
