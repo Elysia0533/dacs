@@ -57,7 +57,7 @@ flutter run ^
   --dart-define=FIREBASE_MESSAGING_SENDER_ID=your_sender_id ^
   --dart-define=FIREBASE_PROJECT_ID=your_project_id ^
   --dart-define=FIREBASE_STORAGE_BUCKET=your_project.appspot.com ^
-  --dart-define=VBOOK_ADMIN_EMAILS=your_admin_email@gmail.com
+  --dart-define=VBOOK_ADMIN_EMAILS=vglduc25@gmail.com
 ```
 
 Co the dien cac gia tri public cua Firebase truc tiep vao
@@ -89,7 +89,7 @@ flutter build apk --release ^
   --dart-define=FIREBASE_MESSAGING_SENDER_ID=your_sender_id ^
   --dart-define=FIREBASE_PROJECT_ID=your_project_id ^
   --dart-define=FIREBASE_STORAGE_BUCKET=your_project.appspot.com ^
-  --dart-define=VBOOK_ADMIN_EMAILS=your_admin_email@gmail.com
+  --dart-define=VBOOK_ADMIN_EMAILS=vglduc25@gmail.com
 ```
 
 Android package hien tai: `com.vbook.reader`.
