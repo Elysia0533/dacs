@@ -67,6 +67,20 @@ Firestore Rules.
 
 ## Build APK release
 
+Nhanh nhat nen dung file `release.env` de khong phai go nhieu `--dart-define`.
+
+```powershell
+Copy-Item release.env.example release.env
+```
+
+Dien gia tri that vao `release.env`, sau do build:
+
+```powershell
+.\scripts\build_release_apk.ps1 -RequireFirebase
+```
+
+Neu chi muon build ban doc Drive/offline, bo `-RequireFirebase`.
+
 ```sh
 flutter build apk --release ^
   --dart-define=GOOGLE_DRIVE_API_KEY=your_drive_key ^
