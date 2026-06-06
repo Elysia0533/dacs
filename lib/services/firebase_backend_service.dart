@@ -111,6 +111,7 @@ class FirebaseBackendService {
         );
       }
 
+      await _refreshVerifiedToken(refreshedUser);
       await _upsertProfile(refreshedUser);
       return _appUserFromFirebase(refreshedUser);
     } on firebase_auth.FirebaseAuthException catch (e) {
@@ -136,6 +137,7 @@ class FirebaseBackendService {
       );
     }
 
+    await _refreshVerifiedToken(refreshedUser);
     await _upsertProfile(refreshedUser);
     return _appUserFromFirebase(refreshedUser);
   }
@@ -161,6 +163,7 @@ class FirebaseBackendService {
       await user.reload();
       final refreshedUser = _auth.currentUser;
       if (refreshedUser == null || !refreshedUser.emailVerified) return null;
+      await _refreshVerifiedToken(refreshedUser);
       await _upsertProfile(refreshedUser);
       return _appUserFromFirebase(refreshedUser);
     } on firebase_auth.FirebaseAuthException catch (e) {
@@ -173,6 +176,7 @@ class FirebaseBackendService {
     if (!_initialized) return null;
     final user = _auth.currentUser;
     if (user == null || !user.emailVerified) return null;
+    await _refreshVerifiedToken(user);
     return user.uid;
   }
 
@@ -196,11 +200,20 @@ class FirebaseBackendService {
   static Future<CommunityMessage> sendCommunityMessage(String text) async {
     _ensureReady();
     final user = _auth.currentUser;
-    if (user == null || !user.emailVerified) {
+    if (user == null) {
       throw Exception('Cần đăng nhập và xác nhận email để gửi tin nhắn.');
     }
 
-    final appUser = await _appUserFromFirebase(user);
+    await user.reload();
+    final refreshedUser = _auth.currentUser ?? user;
+    if (!refreshedUser.emailVerified) {
+      throw Exception(
+        'Cáº§n Ä‘Äƒng nháº­p vÃ  xÃ¡c nháº­n email Ä‘á»ƒ gá»­i tin nháº¯n.',
+      );
+    }
+
+    await _refreshVerifiedToken(refreshedUser);
+    final appUser = await _appUserFromFirebase(refreshedUser);
     final ref = await _db.collection('community_messages').add({
       'userId': appUser.id,
       'displayName': appUser.displayName,
@@ -330,6 +343,11 @@ class FirebaseBackendService {
     } else {
       await ref.set({...data, 'createdAt': FieldValue.serverTimestamp()});
     }
+  }
+
+  static Future<void> _refreshVerifiedToken(firebase_auth.User user) async {
+    if (!user.emailVerified) return;
+    await user.getIdToken(true);
   }
 
   static Future<AppUser> _appUserFromFirebase(firebase_auth.User user) async {

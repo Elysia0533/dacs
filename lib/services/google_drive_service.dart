@@ -175,10 +175,12 @@ class GoogleDriveService {
         (chapterOrder.isNotEmpty ? chapterOrder.first : null);
     if (driveFileId == null || driveFileId.isEmpty) return null;
 
-    final coverFileId = _readString(map['coverFileId']);
+    final coverFileId =
+        _readString(map['coverFileId']) ?? _readString(map['coverId']);
     final iconUrl =
         _readString(map['iconUrl']) ??
-        (coverFileId == null ? '' : getThumbnailUrl(coverFileId));
+        _readString(map['coverUrl']) ??
+        (coverFileId == null ? '' : getCoverImageUrl(coverFileId));
 
     final title = _readString(map['title']) ?? _cleanFileName(driveFileId);
     final storyId = _readString(map['id']) ?? driveFileId;
@@ -247,7 +249,7 @@ class GoogleDriveService {
             title: displayTitle,
             fallbackThumbnail: coverFile == null
                 ? item.thumbnailLink
-                : getThumbnailUrl(coverFile.id),
+                : getCoverImageUrl(coverFile.id),
             metadata: info,
           ),
         );
@@ -285,8 +287,13 @@ class GoogleDriveService {
     String? fallbackThumbnail,
     Map<String, dynamic> metadata = const {},
   }) {
+    final coverFileId =
+        _readString(metadata['coverFileId']) ??
+        _readString(metadata['coverId']);
     final iconUrl =
         _readString(metadata['iconUrl']) ??
+        _readString(metadata['coverUrl']) ??
+        (coverFileId == null ? null : getCoverImageUrl(coverFileId)) ??
         fallbackThumbnail ??
         file.thumbnailLink;
     final totalChapters = _readInt(metadata['totalChapters']) ?? 1;
@@ -422,8 +429,73 @@ class GoogleDriveService {
     return 'https://drive.google.com/thumbnail?id=$fileId&sz=w512';
   }
 
+  static String getCoverImageUrl(String fileId) {
+    return getDownloadUrl(fileId);
+  }
+
+  static List<String> coverImageCandidates(String imagePath) {
+    final trimmed = imagePath.trim();
+    if (trimmed.isEmpty || !trimmed.startsWith('http')) {
+      return trimmed.isEmpty ? const [] : [trimmed];
+    }
+
+    final fileId = extractFileId(trimmed);
+    if (fileId == null || fileId.isEmpty) return [trimmed];
+
+    final isThumbnail = trimmed.contains('drive.google.com/thumbnail');
+    final isMedia =
+        trimmed.contains('www.googleapis.com/drive/v3/files') &&
+        trimmed.contains('alt=media');
+    final directUrl = apiKey.isEmpty ? '' : getCoverImageUrl(fileId);
+    final thumbnailUrl = getThumbnailUrl(fileId);
+
+    if (isMedia) {
+      return _uniqueNonEmpty([trimmed, thumbnailUrl]);
+    }
+    if (isThumbnail) {
+      return _uniqueNonEmpty([trimmed, directUrl]);
+    }
+    return _uniqueNonEmpty([directUrl, thumbnailUrl, trimmed]);
+  }
+
+  static String? extractFileId(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    if (!trimmed.startsWith('http') && !trimmed.contains('/')) return trimmed;
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null) return null;
+
+    final id = uri.queryParameters['id'];
+    if (id != null && id.trim().isNotEmpty) return id.trim();
+
+    if (uri.pathSegments.contains('d')) {
+      final index = uri.pathSegments.indexOf('d');
+      if (index + 1 < uri.pathSegments.length) {
+        return uri.pathSegments[index + 1];
+      }
+    }
+
+    if (uri.pathSegments.contains('files')) {
+      final index = uri.pathSegments.indexOf('files');
+      if (index + 1 < uri.pathSegments.length) {
+        return uri.pathSegments[index + 1];
+      }
+    }
+
+    return null;
+  }
+
   static String getDownloadUrl(String fileId) {
     return 'https://www.googleapis.com/drive/v3/files/$fileId?alt=media&key=$apiKey';
+  }
+
+  static List<String> _uniqueNonEmpty(List<String> values) {
+    final seen = <String>{};
+    return values
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty && seen.add(value))
+        .toList();
   }
 
   static Future<Uint8List> downloadFileBytes(

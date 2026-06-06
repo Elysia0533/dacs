@@ -58,11 +58,21 @@ service cloud.firestore {
     match /community_messages/{messageId} {
       allow read: if true;
       allow create: if isVerified()
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'displayName',
+          'avatarUrl',
+          'text',
+          'createdAt'
+        ])
         && request.resource.data.userId == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.avatarUrl is string
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
         && request.resource.data.text.size() <= 1000
-        && request.resource.data.createdAt == request.time;
+        && request.resource.data.createdAt is timestamp;
       allow update, delete: if isAdmin();
     }
 

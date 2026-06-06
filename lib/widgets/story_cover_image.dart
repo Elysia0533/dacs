@@ -2,7 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-class StoryCoverImage extends StatelessWidget {
+import '../services/google_drive_service.dart';
+
+class StoryCoverImage extends StatefulWidget {
   static const String fallbackAsset = 'assets/covers/default_cover.png';
 
   final String imagePath;
@@ -23,28 +25,35 @@ class StoryCoverImage extends StatelessWidget {
   });
 
   @override
+  State<StoryCoverImage> createState() => _StoryCoverImageState();
+}
+
+class _StoryCoverImageState extends State<StoryCoverImage> {
+  int _candidateIndex = 0;
+
+  @override
+  void didUpdateWidget(covariant StoryCoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imagePath != widget.imagePath) {
+      _candidateIndex = 0;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final trimmedPath = imagePath.trim();
+    final trimmedPath = widget.imagePath.trim();
     final Widget image;
 
     if (trimmedPath.startsWith('http')) {
-      image = Image.network(
-        trimmedPath,
-        width: width,
-        height: height,
-        fit: fit,
-        errorBuilder: (_, _, _) => _fallback(),
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return _fallback();
-        },
+      image = _networkImage(
+        GoogleDriveService.coverImageCandidates(trimmedPath),
       );
     } else if (trimmedPath.isNotEmpty && File(trimmedPath).existsSync()) {
       image = Image.file(
         File(trimmedPath),
-        width: width,
-        height: height,
-        fit: fit,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
         errorBuilder: (_, _, _) => _fallback(),
       );
     } else {
@@ -52,15 +61,66 @@ class StoryCoverImage extends StatelessWidget {
     }
 
     final content = ColoredBox(
-      color: backgroundColor ?? Theme.of(context).colorScheme.surfaceContainer,
-      child: SizedBox(width: width, height: height, child: image),
+      color:
+          widget.backgroundColor ??
+          Theme.of(context).colorScheme.surfaceContainer,
+      child: SizedBox(width: widget.width, height: widget.height, child: image),
     );
 
-    if (borderRadius == null) return content;
-    return ClipRRect(borderRadius: borderRadius!, child: content);
+    if (widget.borderRadius == null) return content;
+    return ClipRRect(borderRadius: widget.borderRadius!, child: content);
+  }
+
+  Widget _networkImage(List<String> candidates) {
+    if (candidates.isEmpty) return _fallback();
+
+    final index = _candidateIndex >= candidates.length ? 0 : _candidateIndex;
+    final imageUrl = candidates[index];
+
+    return Image.network(
+      imageUrl,
+      key: ValueKey(imageUrl),
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.medium,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return _loading();
+      },
+      errorBuilder: (_, _, _) {
+        if (index + 1 < candidates.length) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() => _candidateIndex = index + 1);
+          });
+          return _loading();
+        }
+        return _fallback();
+      },
+    );
+  }
+
+  Widget _loading() {
+    return Center(
+      child: SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
   }
 
   Widget _fallback() {
-    return Image.asset(fallbackAsset, width: width, height: height, fit: fit);
+    return Image.asset(
+      StoryCoverImage.fallbackAsset,
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+    );
   }
 }
