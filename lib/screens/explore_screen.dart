@@ -19,11 +19,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
   bool _isSearching = false;
   String? _loadError;
 
-  // Tìm kiếm theo tên + tác giả
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // Lọc theo thể loại
   String _selectedGenre = 'Tất cả';
   List<String> _allGenres = ['Tất cả'];
 
@@ -92,7 +90,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
     return message;
   }
 
-  /// Thu thập tất cả thể loại duy nhất từ danh sách truyện
   void _buildGenreList() {
     final genreSet = <String>{};
     for (final story in _serverStories) {
@@ -104,21 +101,17 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final sorted = genreSet.toList()..sort();
     _allGenres = ['Tất cả', ...sorted];
 
-    // Reset lại nếu thể loại đang chọn không còn tồn tại
     if (!_allGenres.contains(_selectedGenre)) {
       _selectedGenre = 'Tất cả';
     }
   }
 
-  /// Lọc kết hợp: theo thể loại VÀ tìm kiếm text (tên + tác giả)
   List<Story> get _displayStories {
     return _serverStories.where((s) {
-      // Lọc thể loại
       final genreMatch =
           _selectedGenre == 'Tất cả' ||
           s.genres.any((g) => g.trim() == _selectedGenre);
 
-      // Tìm kiếm text
       final q = _searchQuery.trim().toLowerCase();
       final textMatch =
           q.isEmpty ||
@@ -294,7 +287,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Hàng chip thể loại ──
                 if (_allGenres.length > 1)
                   _GenreChipBar(
                     genres: _allGenres,
@@ -304,13 +296,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     onSelect: (genre) => setState(() => _selectedGenre = genre),
                   ),
 
-                // ── Header kết quả ──
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: _buildResultHeader(isDark, accentColor),
                 ),
 
-                // ── Danh sách truyện ──
                 Expanded(child: _buildStoryGrid(isDark)),
               ],
             ),
@@ -357,7 +347,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ],
           ),
         ),
-        // Nút xóa bộ lọc nếu đang lọc
         if (isFiltered)
           TextButton.icon(
             onPressed: () {
@@ -409,7 +398,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 }
 
-// ── Widget: Hàng chip thể loại ──
 class _GenreChipBar extends StatelessWidget {
   final List<String> genres;
   final String selected;
@@ -483,7 +471,6 @@ class _GenreChipBar extends StatelessWidget {
   }
 }
 
-// ── Widget: Card truyện ──
 class _StoryCard extends StatelessWidget {
   final Story story;
   final bool isDark;
@@ -502,7 +489,6 @@ class _StoryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Ảnh bìa
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -529,7 +515,6 @@ class _StoryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          // Tên truyện
           Text(
             story.title,
             maxLines: 2,
@@ -541,7 +526,6 @@ class _StoryCard extends StatelessWidget {
               color: isDark ? Colors.white : Colors.black87,
             ),
           ),
-          // Tên tác giả (nếu có)
           if (story.author.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(

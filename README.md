@@ -25,8 +25,8 @@ flutter run
 ```
 
 Man Kham pha lay danh sach truyen truc tiep tu Google Drive. Link Drive co the
-truyen bang `--dart-define` hoac gan san trong
-`lib/services/google_drive_service.dart` tai `hardcodedFolderUrls`.
+truyen bang `--dart-define` hoac dung danh sach demo trong
+`lib/services/google_drive_service.dart` tai `demoFolderUrls`.
 
 ```sh
 flutter run --dart-define=GOOGLE_DRIVE_API_KEY=your_drive_key

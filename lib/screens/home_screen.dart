@@ -29,17 +29,14 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Story> _filteredStories = [];
   bool _isLoading = true;
 
-  // Kệ sách settings
   bool _isGridView = true;
   int _columnCount = 2;
   _LibrarySort _sortMode = _LibrarySort.recent;
 
-  // Tìm kiếm
   bool _isSearching = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // Banner - truyện đọc gần nhất
   Story? _lastReadStory;
 
   @override
@@ -103,7 +100,6 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
-        // Dùng StatefulBuilder để cập nhật UI bên trong bottom sheet
         return StatefulBuilder(
           builder: (ctx, setModalState) {
             return Container(
@@ -128,7 +124,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 20),
-                  // Import
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
@@ -184,7 +179,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   const Divider(height: 28),
-                  // Kiểu hiển thị
                   const Text(
                     'Kiểu hiển thị',
                     style: TextStyle(fontWeight: FontWeight.w600),
@@ -217,7 +211,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  // Số cột (chỉ hiện khi dạng lưới)
                   if (_isGridView) ...[
                     const SizedBox(height: 16),
                     Row(
@@ -396,7 +389,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Tính % tiến trình đọc
   String _getProgressLabel(Story story) {
     if (story.totalChapters > 1 && story.savedChapterIndex > 0) {
       final pct = ((story.savedChapterIndex / story.totalChapters) * 100)
@@ -525,7 +517,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final hasProgress = story.savedChapterIndex > 0;
 
     if (!_isGridView) {
-      // ── Dạng danh sách ──
       return GestureDetector(
         onTap: () => _openStory(story),
         onLongPress: () => _confirmDeleteStory(story),
@@ -601,7 +592,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // ── Dạng lưới ──
     return GestureDetector(
       onTap: () => _openStory(story),
       onLongPress: () => _confirmDeleteStory(story),
@@ -639,7 +629,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                   ),
                 ),
-                // Progress badge
                 Positioned(
                   left: 6,
                   bottom: 6,
@@ -730,10 +719,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Column(
       children: [
-        // Banner truyện đọc gần nhất
         _buildLastReadBanner(isDark),
 
-        // Thanh tìm kiếm + header
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
@@ -776,7 +763,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
 
-        // Danh sách truyện
         Expanded(
           child: _filteredStories.isEmpty
               ? Center(
@@ -918,7 +904,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ── Widget con: nút toggle xem lưới/danh sách ──
 class _ViewToggleButton extends StatelessWidget {
   final IconData icon;
   final String label;

@@ -6,19 +6,14 @@ import 'package:http/http.dart' as http;
 import '../models/story.dart';
 
 class GoogleDriveService {
-  static const String _fallbackApiKey =
-      'AIzaSyDKJeyLnSj0DDYoe9z0j2Sh49C0trG_6Z4';
-  static const String apiKey = String.fromEnvironment(
-    'GOOGLE_DRIVE_API_KEY',
-    defaultValue: _fallbackApiKey,
-  );
+  static const String apiKey = String.fromEnvironment('GOOGLE_DRIVE_API_KEY');
   static const String defaultFolderUrl = String.fromEnvironment(
     'GOOGLE_DRIVE_FOLDER_URL',
   );
   static const String defaultFolderUrls = String.fromEnvironment(
     'GOOGLE_DRIVE_FOLDER_URLS',
   );
-  static const List<String> hardcodedFolderUrls = [
+  static const List<String> demoFolderUrls = [
     'https://drive.google.com/drive/folders/1JqHqueAhOcybtFQixX1PTypmq0MB7Mrx?usp=sharing',
     'https://drive.google.com/drive/folders/135QOQhnFAvSHoqbnr8aZmXbuFnZ3DBJJ?usp=drive_link',
     'https://drive.google.com/drive/folders/1h8xikg-VhsrSW-J5UBb5xLstn03L86tU?usp=drive_link',
@@ -115,9 +110,7 @@ class GoogleDriveService {
       try {
         final catalogStories = await _readCatalogStories(catalogFile.id);
         return catalogStories;
-      } catch (_) {
-        // Fallback to folder scan when catalog exists but is malformed.
-      }
+      } catch (_) {}
     }
 
     return _scanFolderStories(rootFiles);
@@ -134,7 +127,7 @@ class GoogleDriveService {
 
   static List<String> _configuredFolderUrls() {
     return {
-      ...hardcodedFolderUrls,
+      ...demoFolderUrls,
       ...parseFolderInputs(defaultFolderUrls),
       ...parseFolderInputs(defaultFolderUrl),
     }.toList();
@@ -232,9 +225,7 @@ class GoogleDriveService {
     if (catalogFile != null) {
       try {
         stories.addAll(await _readCatalogStories(catalogFile.id));
-      } catch (_) {
-        // Continue scanning files if nested catalog is malformed.
-      }
+      } catch (_) {}
     }
 
     final ebookFiles = children.where((file) => file.isStoryFile).toList();

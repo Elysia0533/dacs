@@ -5,8 +5,8 @@ class Story {
   final String content;
   final String contentEng;
   final String description;
-  final String author; // Tên tác giả
-  final List<String> genres; // Danh sách thể loại
+  final String author;
+  final List<String> genres;
   final int totalChapters;
   final int currentChapter;
   final int savedChapterIndex;

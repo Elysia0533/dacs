@@ -120,16 +120,6 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  @Deprecated('Dùng registerWithBackend/loginWithBackend để đăng nhập thật.')
-  Future<void> login(String name, int colorValue) async {
-    _name = name.trim();
-    _avatarColorValue = colorValue;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_nameKey, _name);
-    await prefs.setInt(_avatarColorKey, colorValue);
-    notifyListeners();
-  }
-
   Future<void> logout() async {
     await ApiService.logoutBackend();
     _user = null;
@@ -144,7 +134,6 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Lấy chữ cái đầu viết hoa để hiển thị avatar
   String get initials {
     if (_name.isEmpty) return '?';
     final parts = _name.trim().split(' ');

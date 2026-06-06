@@ -188,9 +188,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Custom Table of Contents bottom sheet
-// ─────────────────────────────────────────────────────────────────────────────
 class _TocBottomSheet extends StatefulWidget {
   final EpubController controller;
   final String currentChapterTitle;
@@ -270,7 +267,6 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
           ),
           child: Column(
             children: [
-              // Handle bar
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Container(
@@ -282,7 +278,6 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
                   ),
                 ),
               ),
-              // Header
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: Row(
@@ -339,7 +334,6 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
                 color: isDark ? Colors.white12 : Colors.black12,
                 height: 1,
               ),
-              // Chapter list
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
@@ -382,7 +376,6 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
 
                           return InkWell(
                             onTap: () {
-                              // Navigate using CFI or content file
                               final cfiAnchor = ch.anchor != null
                                   ? '#${ch.anchor}'
                                   : '';

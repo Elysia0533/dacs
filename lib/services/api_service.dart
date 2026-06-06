@@ -18,32 +18,20 @@ import 'google_drive_service.dart';
 class RegisterResult {
   final AppUser user;
   final bool emailVerificationRequired;
-  final String? devVerificationCode;
-  final String? devVerificationLink;
-  final int? verificationExpiresInSeconds;
 
   const RegisterResult({
     required this.user,
     required this.emailVerificationRequired,
-    this.devVerificationCode,
-    this.devVerificationLink,
-    this.verificationExpiresInSeconds,
   });
 }
 
 class EmailVerificationResult {
   final bool ok;
   final bool alreadyVerified;
-  final String? devVerificationCode;
-  final String? devVerificationLink;
-  final int? verificationExpiresInSeconds;
 
   const EmailVerificationResult({
     required this.ok,
     this.alreadyVerified = false,
-    this.devVerificationCode,
-    this.devVerificationLink,
-    this.verificationExpiresInSeconds,
   });
 }
 
@@ -57,11 +45,6 @@ class ApiService {
   static const String _authUserKey = 'firebase_auth_user';
   static final Map<String, Timer> _scrollSaveTimers = {};
 
-  static String get apiBaseUrl => FirebaseBackendService.isConfigured
-      ? 'Đồng bộ đám mây'
-      : 'Chưa bật đồng bộ';
-
-  // Trích xuất metadata EPUB: title, author, genres (subjects), description, coverPath
   static Future<Map<String, dynamic>> extractEpubMetadata(
     String filePath,
   ) async {
@@ -69,7 +52,6 @@ class ApiService {
       final file = File(filePath);
       final bytes = await file.readAsBytes();
 
-      // Dùng epubx để lấy đầy đủ schema metadata
       final book = await epubx.EpubReader.readBook(bytes);
       final meta = book.Schema?.Package?.Metadata;
 
@@ -80,15 +62,12 @@ class ApiService {
       final chapterCount = _countReadableChapters(book.Chapters ?? []);
 
       if (meta != null) {
-        // Subjects = thể loại
         if (meta.Subjects != null && meta.Subjects!.isNotEmpty) {
           genres = List<String>.from(meta.Subjects!);
         }
-        // Description
         if (meta.Description != null && meta.Description!.isNotEmpty) {
           description = meta.Description!;
         }
-        // Author (dự phòng nếu book.Author trống)
         if (author.isEmpty &&
             meta.Creators != null &&
             meta.Creators!.isNotEmpty) {
@@ -96,7 +75,6 @@ class ApiService {
         }
       }
 
-      // Lấy ảnh bìa từ epub_view (vì epubx không decode hình)
       String coverPath = '';
       try {
         final document = await EpubDocument.openData(bytes);
@@ -124,7 +102,6 @@ class ApiService {
     }
   }
 
-  // Lấy danh sách truyện trong Thư viện cá nhân
   static int _countReadableChapters(List<epubx.EpubChapter> chapters) {
     var count = 0;
     for (final chapter in chapters) {
@@ -145,7 +122,6 @@ class ApiService {
     return localStoriesJson.map((s) => Story.fromJson(json.decode(s))).toList();
   }
 
-  // Lấy danh sách truyện từ Google Drive, có cache local dự phòng.
   static Future<List<Story>> fetchServerStories() async {
     return _fetchDriveStoriesAndCache(useFreshCache: true);
   }
@@ -193,7 +169,6 @@ class ApiService {
     return storiesJson.map((s) => Story.fromJson(json.decode(s))).toList();
   }
 
-  // Admin: tải lại danh sách truyện từ Google Drive.
   static Future<List<Story>> refreshServerStories() async {
     return _fetchDriveStoriesAndCache();
   }
@@ -365,7 +340,6 @@ class ApiService {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
 
-    // Kiểm tra xem đã tồn tại chưa (dựa theo id)
     bool exists = localStoriesJson.any((s) {
       final decoded = json.decode(s);
       final sameId = decoded['id'] == story.id;
@@ -421,7 +395,6 @@ class ApiService {
     return null;
   }
 
-  // Xóa truyện khỏi thư viện cá nhân
   static Future<void> deleteLocalStory(String storyId) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
@@ -436,7 +409,6 @@ class ApiService {
     });
     await prefs.setStringList(_localStoriesKey, localStoriesJson);
     await _deleteOwnedStoryFiles(removedStories);
-    // Xóa luôn vị trí cuộn đã lưu
     await prefs.remove('scroll_$storyId');
     await _removeStoryFromBackendLibrary(storyId);
   }
@@ -473,7 +445,6 @@ class ApiService {
     }
   }
 
-  // Lưu vị trí cuộn (dùng cho TXT reader)
   static Future<void> saveScrollOffset(String storyId, double offset) async {
     _scrollSaveTimers[storyId]?.cancel();
     _scrollSaveTimers[storyId] = Timer(
@@ -497,7 +468,6 @@ class ApiService {
     );
   }
 
-  // Tim truyen local de giu nguyen chapter khi dong bo scroll offset.
   static Future<Story?> _findLocalStory(String storyId) async {
     final prefs = await SharedPreferences.getInstance();
     final localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
@@ -510,17 +480,14 @@ class ApiService {
     return null;
   }
 
-  // Lay vi tri cuon da luu.
   static Future<double> getScrollOffset(String storyId) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getDouble('scroll_$storyId') ?? 0.0;
   }
 
-  // Lấy truyện đọc gần nhất (có savedChapterIndex > 0 hoặc có scroll offset)
   static Future<Story?> getLastReadStory() async {
     final stories = await fetchPersonalStories();
     if (stories.isEmpty) return null;
-    // Ưu tiên truyện có tiến trình (savedChapterIndex > 0)
     final withProgress = stories.where((s) => s.savedChapterIndex > 0).toList();
     if (withProgress.isNotEmpty) return withProgress.first;
     return stories.first;
@@ -533,7 +500,6 @@ class ApiService {
   }) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    // Lưu trong local
     List<String> localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
     List<Story> localStories = localStoriesJson
         .map((s) => Story.fromJson(json.decode(s)))
@@ -550,7 +516,6 @@ class ApiService {
       await prefs.setStringList(_localStoriesKey, updatedJson);
     }
 
-    // Lưu trong server (cho mục Khám phá)
     List<String> serverStoriesJson =
         prefs.getStringList(_serverStoriesKey) ?? [];
     List<Story> serverStories = serverStoriesJson
@@ -575,7 +540,6 @@ class ApiService {
     );
   }
 
-  // Khởi tạo các file truyện từ assets/offline_stories/
   static Future<void> initOfflineStories() async {
     try {
       final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
@@ -596,13 +560,11 @@ class ApiService {
         final fileName = assetPath.split('/').last;
         final localFile = File('${directory.path}/$fileName');
 
-        // Tạo title đẹp hơn bằng cách bỏ đuôi file (ví dụ: ThanhXuan_Vol1.epub -> ThanhXuan_Vol1)
         final displayTitle = fileName.replaceAll(
           RegExp(r'\.(epub|pdf|txt)$', caseSensitive: false),
           '',
         );
 
-        // Kiểm tra xem truyện này đã được thêm vào trước đó chưa (tránh copy lại)
         bool exists = localStoriesJson.any((s) {
           final decoded = json.decode(s);
           final sameTitle =
@@ -612,7 +574,6 @@ class ApiService {
         });
 
         if (!exists) {
-          // Copy từ asset ra bộ nhớ trong
           final byteData = await rootBundle.load(assetPath);
           await localFile.writeAsBytes(
             byteData.buffer.asUint8List(
@@ -676,12 +637,10 @@ class ApiService {
             );
           }
 
-          // Trực tiếp thêm vào list hiện tại để vòng lặp sau nhận biết
           localStoriesJson.insert(0, json.encode(newStory.toJson()));
         }
       }
 
-      // Lưu lại toàn bộ danh sách cập nhật
       await prefs.setStringList(_localStoriesKey, localStoriesJson);
     } catch (e) {
       debugPrint('Lỗi khởi tạo offline stories: $e');

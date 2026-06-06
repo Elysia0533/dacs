@@ -18,11 +18,9 @@ class _ReadingScreenState extends State<ReadingScreen> {
   bool _showEnglish = false;
   bool _showToolbar = false;
 
-  // Scroll
   final ScrollController _scrollController = ScrollController();
   double _scrollProgress = 0.0;
 
-  // TTS
   final FlutterTts _tts = FlutterTts();
   bool _isSpeaking = false;
   bool _isPaused = false;
@@ -68,7 +66,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
     if (offset > 0 && _scrollController.hasClients) {
       _scrollController.jumpTo(offset);
     } else {
-      // Dùng addPostFrameCallback để đảm bảo scroll đã sẵn sàng
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         final savedOffset = await ApiService.getScrollOffset(widget.story.id);
         if (savedOffset > 0 && _scrollController.hasClients) {
@@ -86,7 +83,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
     if (max > 0) {
       setState(() => _scrollProgress = current / max);
     }
-    // Lưu vị trí cuộn mỗi khi thay đổi (debounced thông qua setState)
     ApiService.saveScrollOffset(widget.story.id, current);
   }
 
@@ -95,7 +91,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
       ? widget.story.contentEng
       : widget.story.content;
 
-  // ── TTS ──
   Future<void> _toggleTts() async {
     await _applyTtsSettings();
     if (_isSpeaking && !_isPaused) {
@@ -147,7 +142,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
         onTap: () => setState(() => _showToolbar = !_showToolbar),
         child: Stack(
           children: [
-            // ── Nội dung ──
             SingleChildScrollView(
               controller: _scrollController,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 56),
@@ -184,7 +178,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
               ),
             ),
 
-            // ── Top AppBar ──
             AnimatedSlide(
               duration: const Duration(milliseconds: 250),
               offset: _showToolbar ? Offset.zero : const Offset(0, -1),
@@ -228,7 +221,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          // Nút chuyển ngôn ngữ (nếu có bản dịch)
                           if (widget.story.contentEng.isNotEmpty)
                             IconButton(
                               icon: Icon(
@@ -269,7 +261,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
               ),
             ),
 
-            // ── Bottom bar với progress ──
             Positioned(
               bottom: 0,
               left: 0,
@@ -286,7 +277,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Progress bar
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                             child: Row(
@@ -336,7 +326,6 @@ class _ReadingScreenState extends State<ReadingScreen> {
                               ],
                             ),
                           ),
-                          // TTS controls
                           if (_isSpeaking)
                             _ReaderAudioBar(
                               isPaused: _isPaused,
@@ -419,7 +408,6 @@ class _ReaderAudioBar extends StatelessWidget {
   }
 }
 
-// ── Settings Bottom Sheet (dùng lại từ chapter_reader_screen) ──
 class _SettingsSheet extends StatelessWidget {
   const _SettingsSheet();
 
@@ -451,7 +439,6 @@ class _SettingsSheet extends StatelessWidget {
               ),
             ),
           ),
-          // Font size
           Text(
             'Cỡ chữ',
             style: TextStyle(
@@ -494,7 +481,6 @@ class _SettingsSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          // Line height
           Text(
             'Dãn dòng',
             style: TextStyle(
@@ -539,7 +525,6 @@ class _SettingsSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          // Font family
           Text(
             'Phông chữ',
             style: TextStyle(
@@ -567,7 +552,6 @@ class _SettingsSheet extends StatelessWidget {
             }).toList(),
           ),
           const SizedBox(height: 16),
-          // Background color
           Text(
             'Màu nền',
             style: TextStyle(

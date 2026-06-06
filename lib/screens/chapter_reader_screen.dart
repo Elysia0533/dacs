@@ -25,12 +25,10 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // TTS
   final FlutterTts _tts = FlutterTts();
   bool _isSpeaking = false;
   bool _isPaused = false;
 
-  // UI
   bool _showBars = true;
 
   @override
@@ -139,7 +137,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   }
 
   void _onScroll() {
-    // Ẩn/hiện bars khi cuộn
     if (_scrollController.position.userScrollDirection ==
             ScrollDirection.reverse &&
         _showBars) {
@@ -149,7 +146,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         !_showBars) {
       setState(() => _showBars = true);
     }
-    // Tự động chuyển chương khi cuộn đến cuối
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 80) {
       _goToChapter(_currentIndex + 1, smooth: false);
@@ -178,7 +174,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     }
   }
 
-  // ── TTS ──
   Future<void> _toggleTts() async {
     if (_chapters.isEmpty) return;
     if (_isSpeaking && !_isPaused) {
@@ -267,21 +262,17 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
           final width = MediaQuery.of(context).size.width;
           final dx = details.globalPosition.dx;
           if (dx < width * 0.25) {
-            // Chạm bên trái: Mở danh sách chương
             _scaffoldKey.currentState?.openDrawer();
           } else if (dx > width * 0.75) {
-            // Chạm bên phải: Chuyển chương tiếp theo
             if (_currentIndex < _chapters.length - 1) {
               _goToChapter(_currentIndex + 1);
             }
           } else {
-            // Chạm ở giữa: Ẩn/hiện thanh công cụ
             setState(() => _showBars = !_showBars);
           }
         },
         child: Stack(
           children: [
-            // ── Content ──
             NotificationListener<ScrollNotification>(
               child: CustomScrollView(
                 controller: _scrollController,
@@ -289,7 +280,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                   SliverToBoxAdapter(
                     child: SizedBox(height: _showBars ? 100 : 60),
                   ),
-                  // Chapter title
                   SliverToBoxAdapter(
                     child: Center(
                       child: ConstrainedBox(
@@ -307,7 +297,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                       ),
                     ),
                   ),
-                  // Chapter HTML content
                   SliverToBoxAdapter(
                     child: Center(
                       child: ConstrainedBox(
@@ -332,7 +321,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                       ),
                     ),
                   ),
-                  // Next chapter button at bottom
                   SliverToBoxAdapter(
                     child: Center(
                       child: ConstrainedBox(
@@ -377,7 +365,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
               ),
             ),
 
-            // ── Top AppBar ──
             AnimatedSlide(
               duration: const Duration(milliseconds: 250),
               offset: _showBars ? Offset.zero : const Offset(0, -1),
@@ -454,7 +441,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
               ),
             ),
 
-            // ── Bottom bar ──
             Positioned(
               bottom: 0,
               left: 0,
@@ -471,7 +457,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Progress bar
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                             child: Row(
@@ -540,7 +525,6 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                               ],
                             ),
                           ),
-                          // TTS controls
                           if (_isSpeaking)
                             _ReaderAudioBar(
                               isPaused: _isPaused,
@@ -629,7 +613,6 @@ class _ReaderAudioBar extends StatelessWidget {
   }
 }
 
-// ── Data model ──
 class _Chapter {
   final String title;
   final String html;
@@ -637,7 +620,6 @@ class _Chapter {
   _Chapter({required this.title, required this.html, required this.plain});
 }
 
-// ── TOC Drawer ──
 class _TocDrawer extends StatefulWidget {
   final List<_Chapter> chapters;
   final int currentIndex;
@@ -660,7 +642,6 @@ class _TocDrawerState extends State<_TocDrawer> {
   void initState() {
     super.initState();
     double offset = widget.currentIndex * _itemHeight;
-    // Để mục hiện tại nằm ở giữa màn hình nếu có thể
     offset = offset - 200 > 0 ? offset - 200 : 0;
     _scrollController = ScrollController(initialScrollOffset: offset);
   }
@@ -726,7 +707,7 @@ class _TocDrawerState extends State<_TocDrawer> {
               child: ListView.builder(
                 controller: _scrollController,
                 itemCount: widget.chapters.length,
-                itemExtent: _itemHeight, // Cố định chiều cao để cuộn chính xác
+                itemExtent: _itemHeight,
                 itemBuilder: (_, i) {
                   final isCur = i == widget.currentIndex;
                   return InkWell(
@@ -737,7 +718,7 @@ class _TocDrawerState extends State<_TocDrawer> {
                       decoration: BoxDecoration(
                         color: isCur
                             ? accent.withValues(alpha: 0.15)
-                            : Colors.transparent, // Bôi màu đậm hơn chút
+                            : Colors.transparent,
                         border: Border(
                           left: BorderSide(
                             color: isCur ? accent : Colors.transparent,
@@ -781,7 +762,6 @@ class _TocDrawerState extends State<_TocDrawer> {
   }
 }
 
-// ── Settings Bottom Sheet ──
 class _SettingsSheet extends StatelessWidget {
   const _SettingsSheet();
 
@@ -814,7 +794,6 @@ class _SettingsSheet extends StatelessWidget {
             ),
           ),
 
-          // Font size
           Text(
             'Cỡ chữ',
             style: TextStyle(
@@ -858,7 +837,6 @@ class _SettingsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // Line height
           Text(
             'Dãn dòng',
             style: TextStyle(
@@ -904,7 +882,6 @@ class _SettingsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Font family
           Text(
             'Phông chữ',
             style: TextStyle(
@@ -933,7 +910,6 @@ class _SettingsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Background color
           Text(
             'Màu nền',
             style: TextStyle(

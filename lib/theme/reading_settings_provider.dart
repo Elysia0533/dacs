@@ -14,7 +14,7 @@ class ReadingSettingsProvider extends ChangeNotifier {
 
   double _fontSize = 18.0;
   String _fontFamily = 'Merriweather';
-  int _bgColorValue = 0xFFF5F0E8; // Kem
+  int _bgColorValue = 0xFFF5F0E8;
   double _lineHeight = 1.7;
   double _ttsRate = 0.48;
   double _ttsPitch = 1.0;
@@ -30,7 +30,6 @@ class ReadingSettingsProvider extends ChangeNotifier {
   double get ttsVolume => _ttsVolume;
   bool get audioAutoNext => _audioAutoNext;
 
-  // Danh sách các font đọc truyện
   static const List<Map<String, String>> availableFonts = [
     {'name': 'Merriweather', 'label': 'Merriweather'},
     {'name': 'Nunito', 'label': 'Nunito'},
@@ -40,7 +39,6 @@ class ReadingSettingsProvider extends ChangeNotifier {
     {'name': 'PlayfairDisplay', 'label': 'Playfair'},
   ];
 
-  // Danh sách màu nền
   static const List<Map<String, dynamic>> bgColors = [
     {'label': 'Trắng', 'value': 0xFFFFFFFF, 'textColor': 0xFF1A1A1A},
     {

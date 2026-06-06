@@ -13,9 +13,7 @@ class PdfReaderScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(story.title),
-      ),
+      appBar: AppBar(title: Text(story.title)),
       body: story.isFromDrive && story.localPath.isEmpty
           ? SfPdfViewer.network(
               GoogleDriveService.getDownloadUrl(story.driveFileId),

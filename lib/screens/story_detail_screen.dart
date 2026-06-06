@@ -72,17 +72,13 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       );
       final dir = await getApplicationDocumentsDirectory();
 
-      // Xác định đuôi file dựa trên dữ liệu thực tế của bytes (magic bytes)
-      // Mặc định thử epub, nếu không nhận ra thì dùng txt
       String ext = 'epub';
       if (bytes.length >= 4) {
-        // PDF magic: %PDF = 0x25 0x50 0x44 0x46
         if (bytes[0] == 0x25 &&
             bytes[1] == 0x50 &&
             bytes[2] == 0x44 &&
             bytes[3] == 0x46) {
           ext = 'pdf';
-          // ZIP/EPUB magic: PK = 0x50 0x4B
         } else if (bytes[0] == 0x50 && bytes[1] == 0x4B) {
           ext = 'epub';
         } else {
@@ -90,12 +86,10 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
         }
       }
 
-      // Tên file an toàn (xóa ký tự đặc biệt) + đuôi mở rộng đúng
       final safeTitle = _story.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
       final file = File('${dir.path}/$safeTitle.$ext');
       await file.writeAsBytes(bytes);
 
-      // Trích xuất metadata nếu là epub
       String iconUrl = _story.iconUrl;
       String description = _story.description;
       String author = _story.author;
@@ -290,7 +284,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       backgroundColor: colorScheme.surface,
       body: CustomScrollView(
         slivers: [
-          // ─── Sliver App Bar with blurred cover ───
           SliverAppBar(
             expandedHeight: size.height * 0.38,
             pinned: true,
@@ -316,7 +309,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Blurred bg cover
                   Builder(
                     builder: (_) {
                       final iconUrl = _story.iconUrl;
@@ -333,7 +325,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                           : Container(color: const Color(0xFF2C2C2C));
                     },
                   ),
-                  // Gradient overlay
                   DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -346,7 +337,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                       ),
                     ),
                   ),
-                  // Cover + title at bottom
                   Positioned(
                     bottom: 20,
                     left: 20,
@@ -389,7 +379,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             ),
           ),
 
-          // ─── Action buttons ───
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -398,7 +387,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                 children: [
                   Row(
                     children: [
-                      // Nếu là truyện từ Drive và CHƯA tải về: chỉ hiện nút "Lưu về máy"
                       if (_story.isFromDrive && _story.localPath.isEmpty) ...[
                         if (_canReadOnline) ...[
                           Expanded(
@@ -451,7 +439,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                           ),
                         ),
                       ] else ...[
-                        // Đã tải về hoặc là truyện local: hiện nút "Đọc ngay"
                         Expanded(
                           flex: 3,
                           child: FilledButton.icon(
@@ -507,7 +494,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
             ),
           ),
 
-          // ─── Description Section ───
           if (_story.description.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
@@ -570,7 +556,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
               ),
             ),
 
-          // ─── Bottom padding ───
           const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],
       ),
