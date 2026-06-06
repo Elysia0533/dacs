@@ -24,6 +24,7 @@ class GoogleDriveService {
 
   static const String _folderMimeType = 'application/vnd.google-apps.folder';
   static const Set<String> _supportedExtensions = {'epub', 'pdf', 'txt'};
+  static const Set<String> _imageExtensions = {'jpg', 'jpeg', 'png', 'webp'};
   static const int _maxScanDepth = 4;
 
   static String? extractFolderId(String value) {
@@ -365,16 +366,32 @@ class GoogleDriveService {
   }
 
   static _DriveFile? _findCoverFile(List<_DriveFile> files) {
-    for (final file in files) {
+    final imageFiles = files.where((file) => file.isImageFile).toList();
+    if (imageFiles.isEmpty) return null;
+
+    for (final file in imageFiles) {
       final lower = file.name.toLowerCase();
-      if (lower.startsWith('cover.') &&
-          (lower.endsWith('.jpg') ||
-              lower.endsWith('.jpeg') ||
-              lower.endsWith('.png') ||
-              lower.endsWith('.webp'))) {
+      if (lower.startsWith('cover.') ||
+          lower.startsWith('folder.') ||
+          lower.startsWith('poster.') ||
+          lower.startsWith('thumbnail.') ||
+          lower.startsWith('thumb.') ||
+          lower.startsWith('front.')) {
         return file;
       }
     }
+
+    for (final file in imageFiles) {
+      final lower = file.name.toLowerCase();
+      if (lower.contains('cover') ||
+          lower.contains('poster') ||
+          lower.contains('thumbnail') ||
+          lower.contains('thumb')) {
+        return file;
+      }
+    }
+
+    if (imageFiles.length == 1) return imageFiles.first;
     return null;
   }
 
@@ -551,6 +568,8 @@ class _DriveFile {
   bool get isFolder => mimeType == GoogleDriveService._folderMimeType;
   bool get isStoryFile => GoogleDriveService._isSupportedStoryName(name);
   String get extension => name.split('.').last.toLowerCase();
+  bool get isImageFile =>
+      GoogleDriveService._imageExtensions.contains(extension);
 
   factory _DriveFile.fromJson(Map<String, dynamic> json) {
     return _DriveFile(

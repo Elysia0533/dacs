@@ -493,6 +493,8 @@ class _StoryCard extends StatelessWidget {
           Expanded(
             child: StoryCoverImage(
               imagePath: story.iconUrl,
+              driveFileId: story.driveFileId,
+              fileType: story.fileType,
               width: double.infinity,
               height: double.infinity,
               borderRadius: BorderRadius.circular(8),

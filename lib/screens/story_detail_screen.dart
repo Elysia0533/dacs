@@ -252,6 +252,8 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
         ),
         child: StoryCoverImage(
           imagePath: _story.iconUrl,
+          driveFileId: _story.driveFileId,
+          fileType: _story.fileType,
           width: width,
           height: height,
           borderRadius: BorderRadius.circular(8),
@@ -298,6 +300,8 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                 children: [
                   StoryCoverImage(
                     imagePath: _story.iconUrl,
+                    driveFileId: _story.driveFileId,
+                    fileType: _story.fileType,
                     width: double.infinity,
                     height: double.infinity,
                     backgroundColor: const Color(0xFF2C2C2C),

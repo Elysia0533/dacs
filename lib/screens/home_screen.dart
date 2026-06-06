@@ -427,6 +427,8 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(10),
               child: StoryCoverImage(
                 imagePath: story.iconUrl,
+                driveFileId: story.driveFileId,
+                fileType: story.fileType,
                 width: 50,
                 height: 72,
                 borderRadius: BorderRadius.circular(8),
@@ -509,6 +511,8 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               StoryCoverImage(
                 imagePath: story.iconUrl,
+                driveFileId: story.driveFileId,
+                fileType: story.fileType,
                 width: 52,
                 height: 72,
                 borderRadius: BorderRadius.circular(8),
@@ -569,6 +573,8 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 StoryCoverImage(
                   imagePath: story.iconUrl,
+                  driveFileId: story.driveFileId,
+                  fileType: story.fileType,
                   width: double.infinity,
                   height: double.infinity,
                   borderRadius: BorderRadius.circular(8),

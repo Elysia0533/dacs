@@ -46,6 +46,8 @@ class ApiService {
   static const String _localAccountsKey = 'local_accounts';
   static const String _localCommunityMessagesKey = 'local_community_messages';
   static final Map<String, Timer> _scrollSaveTimers = {};
+  static final Map<String, Future<String?>> _driveCoverTasks = {};
+  static final Set<String> _driveCoverMisses = {};
 
   static Future<Map<String, dynamic>> extractEpubMetadata(
     String filePath,
@@ -102,6 +104,47 @@ class ApiService {
       debugPrint('Lỗi đọc epub metadata: $e');
       return {};
     }
+  }
+
+  static Future<String?> getCachedDriveCoverPath({
+    required String driveFileId,
+    required String fileType,
+  }) async {
+    final normalizedType = fileType.trim().toLowerCase();
+    final id = driveFileId.trim();
+    if (id.isEmpty || normalizedType != 'epub') return null;
+    if (_driveCoverMisses.contains(id)) return null;
+
+    final directory = await getApplicationDocumentsDirectory();
+    final coverDirectory = Directory('${directory.path}/drive_covers');
+    await coverDirectory.create(recursive: true);
+    final safeId = id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final coverFile = File('${coverDirectory.path}/$safeId.jpg');
+    if (await coverFile.exists() && await coverFile.length() > 0) {
+      return coverFile.path;
+    }
+
+    return _driveCoverTasks.putIfAbsent(id, () async {
+      try {
+        final bytes = await GoogleDriveService.downloadFileBytes(id);
+        final document = await EpubDocument.openData(bytes);
+        final coverImage = document.CoverImage;
+        if (coverImage == null) {
+          _driveCoverMisses.add(id);
+          return null;
+        }
+
+        final jpgBytes = img.encodeJpg(coverImage, quality: 88);
+        await coverFile.writeAsBytes(jpgBytes, flush: true);
+        return coverFile.path;
+      } catch (e) {
+        debugPrint('Khong the trich bia EPUB tu Drive: $e');
+        _driveCoverMisses.add(id);
+        return null;
+      } finally {
+        _driveCoverTasks.remove(id);
+      }
+    });
   }
 
   static int _countReadableChapters(List<epubx.EpubChapter> chapters) {

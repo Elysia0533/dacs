@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../services/api_service.dart';
 import '../services/google_drive_service.dart';
 
 class StoryCoverImage extends StatefulWidget {
@@ -13,6 +14,8 @@ class StoryCoverImage extends StatefulWidget {
   final BoxFit fit;
   final BorderRadius? borderRadius;
   final Color? backgroundColor;
+  final String driveFileId;
+  final String fileType;
 
   const StoryCoverImage({
     super.key,
@@ -22,6 +25,8 @@ class StoryCoverImage extends StatefulWidget {
     this.fit = BoxFit.cover,
     this.borderRadius,
     this.backgroundColor,
+    this.driveFileId = '',
+    this.fileType = '',
   });
 
   @override
@@ -30,12 +35,16 @@ class StoryCoverImage extends StatefulWidget {
 
 class _StoryCoverImageState extends State<StoryCoverImage> {
   int _candidateIndex = 0;
+  Future<String?>? _driveCoverFuture;
 
   @override
   void didUpdateWidget(covariant StoryCoverImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imagePath != widget.imagePath) {
+    if (oldWidget.imagePath != widget.imagePath ||
+        oldWidget.driveFileId != widget.driveFileId ||
+        oldWidget.fileType != widget.fileType) {
       _candidateIndex = 0;
+      _driveCoverFuture = null;
     }
   }
 
@@ -57,7 +66,7 @@ class _StoryCoverImageState extends State<StoryCoverImage> {
         errorBuilder: (_, _, _) => _fallback(),
       );
     } else {
-      image = _fallback();
+      image = _driveCoverOrFallback();
     }
 
     final content = ColoredBox(
@@ -95,6 +104,37 @@ class _StoryCoverImageState extends State<StoryCoverImage> {
             if (!mounted) return;
             setState(() => _candidateIndex = index + 1);
           });
+          return _loading();
+        }
+        return _driveCoverOrFallback();
+      },
+    );
+  }
+
+  Widget _driveCoverOrFallback() {
+    final driveFileId = widget.driveFileId.trim();
+    final fileType = widget.fileType.trim().toLowerCase();
+    if (driveFileId.isEmpty || fileType != 'epub') return _fallback();
+
+    _driveCoverFuture ??= ApiService.getCachedDriveCoverPath(
+      driveFileId: driveFileId,
+      fileType: fileType,
+    );
+
+    return FutureBuilder<String?>(
+      future: _driveCoverFuture,
+      builder: (context, snapshot) {
+        final coverPath = snapshot.data;
+        if (coverPath != null && coverPath.isNotEmpty) {
+          return Image.file(
+            File(coverPath),
+            width: widget.width,
+            height: widget.height,
+            fit: widget.fit,
+            errorBuilder: (_, _, _) => _fallback(),
+          );
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return _loading();
         }
         return _fallback();
