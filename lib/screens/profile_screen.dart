@@ -8,24 +8,6 @@ import '../theme/user_provider.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
-  void _showAccountUnavailableDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Đồng bộ chưa sẵn sàng'),
-        content: const Text(
-          'Bản demo hiện tại chưa bật cấu hình đăng nhập. Bạn vẫn có thể đọc truyện, tải truyện và dùng thư viện offline bình thường.',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Đã hiểu'),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _formatAccountError(Object error) {
     final message = error.toString().replaceFirst('Exception: ', '');
     final lower = message.toLowerCase();
@@ -47,12 +29,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   void _showLoginDialog(BuildContext context) {
-    if (!FirebaseBackendService.isConfigured ||
-        !FirebaseBackendService.isInitialized) {
-      _showAccountUnavailableDialog(context);
-      return;
-    }
-
+    final isCloudReady = FirebaseBackendService.isInitialized;
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
     final displayNameController = TextEditingController();
@@ -71,6 +48,31 @@ class ProfileScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (!isCloudReady) ...[
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.phone_android_rounded, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Bản test sẽ lưu tài khoản trên thiết bị này. Khi bật đồng bộ, app sẽ dùng tài khoản đám mây.',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TextField(
                   controller: emailController,
                   decoration: const InputDecoration(
@@ -557,11 +559,14 @@ class ProfileScreen extends StatelessWidget {
   }
 
   String _syncStatusText(UserProvider userProvider) {
+    if (userProvider.isLoggedIn && !FirebaseBackendService.isInitialized) {
+      return '${userProvider.email} - lưu trên thiết bị';
+    }
     if (!FirebaseBackendService.isConfigured) {
-      return 'Chưa bật cho bản demo hiện tại';
+      return 'Sẵn sàng đăng ký trên thiết bị';
     }
     if (!FirebaseBackendService.isInitialized) {
-      return 'Đang chờ kết nối';
+      return 'Sẵn sàng đăng ký trên thiết bị';
     }
     if (userProvider.isLoggedIn) {
       return userProvider.email;
@@ -575,8 +580,11 @@ class ProfileScreen extends StatelessWidget {
         FirebaseBackendService.isConfigured &&
         FirebaseBackendService.isInitialized;
 
-    if (userProvider.isLoggedIn && isReady) {
-      return Icon(Icons.verified_rounded, color: colorScheme.primary);
+    if (userProvider.isLoggedIn) {
+      return Icon(
+        isReady ? Icons.verified_rounded : Icons.check_circle_rounded,
+        color: colorScheme.primary,
+      );
     }
     if (isReady) {
       return Icon(

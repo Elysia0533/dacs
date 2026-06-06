@@ -30,4 +30,15 @@ class CommunityMessage {
           json['createdAt']?.toString() ?? json['created_at']?.toString() ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'userId': userId,
+      'displayName': displayName,
+      'avatarUrl': avatarUrl,
+      'text': text,
+      'createdAt': createdAt,
+    };
+  }
 }

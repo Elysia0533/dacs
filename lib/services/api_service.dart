@@ -43,6 +43,8 @@ class ApiService {
   static const Duration _driveCatalogCacheTtl = Duration(minutes: 30);
   static const String _authTokenKey = 'firebase_auth_token';
   static const String _authUserKey = 'firebase_auth_user';
+  static const String _localAccountsKey = 'local_accounts';
+  static const String _localCommunityMessagesKey = 'local_community_messages';
   static final Map<String, Timer> _scrollSaveTimers = {};
 
   static Future<Map<String, dynamic>> extractEpubMetadata(
@@ -234,6 +236,15 @@ class ApiService {
     required String password,
     required String displayName,
   }) async {
+    if (!FirebaseBackendService.isInitialized) {
+      final user = await _registerLocalAccount(
+        email: email,
+        password: password,
+        displayName: displayName,
+      );
+      return RegisterResult(user: user, emailVerificationRequired: false);
+    }
+
     final user = await FirebaseBackendService.register(
       email: email,
       password: password,
@@ -249,6 +260,14 @@ class ApiService {
     required String email,
     required String code,
   }) async {
+    if (!FirebaseBackendService.isInitialized) {
+      final user = await getSavedUser();
+      if (user == null || user.email.toLowerCase() != email.toLowerCase()) {
+        throw Exception('Hãy đăng nhập lại bằng email vừa đăng ký.');
+      }
+      return user;
+    }
+
     final user = await FirebaseBackendService.confirmEmailVerified(
       email: email,
     );
@@ -259,6 +278,10 @@ class ApiService {
   static Future<EmailVerificationResult> resendVerificationCode({
     required String email,
   }) async {
+    if (!FirebaseBackendService.isInitialized) {
+      return const EmailVerificationResult(ok: true, alreadyVerified: true);
+    }
+
     await FirebaseBackendService.resendVerificationEmail(email: email);
     return const EmailVerificationResult(ok: true);
   }
@@ -267,6 +290,10 @@ class ApiService {
     required String email,
     required String password,
   }) async {
+    if (!FirebaseBackendService.isInitialized) {
+      return _loginLocalAccount(email: email, password: password);
+    }
+
     final user = await FirebaseBackendService.login(
       email: email,
       password: password,
@@ -276,6 +303,10 @@ class ApiService {
   }
 
   static Future<AppUser?> refreshCurrentUser() async {
+    if (!FirebaseBackendService.isInitialized) {
+      return getSavedUser();
+    }
+
     try {
       final user = await FirebaseBackendService.refreshCurrentUser();
       if (user == null) return null;
@@ -295,11 +326,140 @@ class ApiService {
   }
 
   static Future<List<CommunityMessage>> fetchCommunityMessages() async {
+    if (!FirebaseBackendService.isInitialized) {
+      return _fetchLocalCommunityMessages();
+    }
+
     return FirebaseBackendService.fetchCommunityMessages();
   }
 
   static Future<CommunityMessage> sendCommunityMessage(String text) async {
+    if (!FirebaseBackendService.isInitialized) {
+      return _sendLocalCommunityMessage(text);
+    }
+
     return FirebaseBackendService.sendCommunityMessage(text);
+  }
+
+  static Future<AppUser> _registerLocalAccount({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty || !normalizedEmail.contains('@')) {
+      throw Exception('Email không hợp lệ.');
+    }
+    if (password.length < 6) {
+      throw Exception('Mật khẩu cần ít nhất 6 ký tự.');
+    }
+    if (displayName.trim().isEmpty) {
+      throw Exception('Vui lòng nhập tên hiển thị.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList(_localAccountsKey) ?? [];
+    final decodedAccounts = accounts
+        .map((raw) => json.decode(raw) as Map<String, dynamic>)
+        .toList();
+
+    final exists = decodedAccounts.any(
+      (account) =>
+          account['email']?.toString().toLowerCase() == normalizedEmail,
+    );
+    if (exists) {
+      throw Exception('Email này đã được đăng ký.');
+    }
+
+    final user = AppUser(
+      id: 'local_${const Uuid().v4()}',
+      email: normalizedEmail,
+      displayName: displayName.trim(),
+      role: 'user',
+      emailVerified: true,
+    );
+
+    decodedAccounts.add({...user.toJson(), 'password': password});
+    await prefs.setStringList(
+      _localAccountsKey,
+      decodedAccounts.map((account) => json.encode(account)).toList(),
+    );
+    await _saveAuthSession(user, user.id);
+    return user;
+  }
+
+  static Future<AppUser> _loginLocalAccount({
+    required String email,
+    required String password,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList(_localAccountsKey) ?? [];
+
+    Map<String, dynamic>? found;
+    for (final rawAccount in accounts) {
+      final account = json.decode(rawAccount) as Map<String, dynamic>;
+      if (account['email']?.toString().toLowerCase() == normalizedEmail) {
+        found = account;
+        break;
+      }
+    }
+
+    if (found == null) {
+      throw Exception('Không tìm thấy tài khoản với email này.');
+    }
+    if (found['password']?.toString() != password) {
+      throw Exception('Mật khẩu không đúng.');
+    }
+
+    final user = AppUser.fromJson(found);
+    await _saveAuthSession(user, user.id);
+    return user;
+  }
+
+  static Future<List<CommunityMessage>> _fetchLocalCommunityMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawMessages = prefs.getStringList(_localCommunityMessagesKey) ?? [];
+    final messages = rawMessages
+        .map(
+          (raw) => CommunityMessage.fromJson(
+            Map<String, dynamic>.from(json.decode(raw) as Map),
+          ),
+        )
+        .toList();
+    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return messages;
+  }
+
+  static Future<CommunityMessage> _sendLocalCommunityMessage(
+    String text,
+  ) async {
+    final user = await getSavedUser();
+    final token = await getSavedAuthToken();
+    if (user == null || token == null || token.isEmpty) {
+      throw Exception('Cần đăng nhập để gửi tin nhắn.');
+    }
+
+    final message = CommunityMessage(
+      id: 'local_${const Uuid().v4()}',
+      userId: user.id,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      text: text,
+      createdAt: DateTime.now().toIso8601String(),
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    final messages = await _fetchLocalCommunityMessages();
+    messages.add(message);
+    final recentMessages = messages.length > 100
+        ? messages.sublist(messages.length - 100)
+        : messages;
+    await prefs.setStringList(
+      _localCommunityMessagesKey,
+      recentMessages.map((item) => json.encode(item.toJson())).toList(),
+    );
+    return message;
   }
 
   static Future<void> _syncStoryToBackendLibrary(Story story) async {

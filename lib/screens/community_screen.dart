@@ -96,7 +96,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     if (message.contains('FIREBASE_') ||
         message.toLowerCase().contains('đồng bộ') ||
         message.toLowerCase().contains('dong bo')) {
-      return 'Chưa bật kết nối cộng đồng cho bản demo này. Hãy kiểm tra cấu hình trước khi chạy APK.';
+      return 'Không tải được cộng đồng đám mây. Bạn vẫn có thể dùng tài khoản và tin nhắn local trên thiết bị.';
     }
     return message;
   }
