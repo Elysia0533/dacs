@@ -183,6 +183,23 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ],
                 const SizedBox(height: 8),
+                if (isLogin)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: isSubmitting
+                          ? null
+                          : () {
+                              final email = emailController.text.trim();
+                              Navigator.pop(ctx);
+                              _showPasswordResetDialog(
+                                context,
+                                initialEmail: email,
+                              );
+                            },
+                      child: const Text('Quên mật khẩu?'),
+                    ),
+                  ),
                 TextButton(
                   onPressed: isSubmitting
                       ? null
@@ -453,6 +470,230 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  void _showPasswordResetDialog(
+    BuildContext context, {
+    String initialEmail = '',
+  }) {
+    final emailController = TextEditingController(text: initialEmail);
+    bool isSubmitting = false;
+    String? errorText;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Khôi phục mật khẩu'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Nhập email tài khoản. Ứng dụng sẽ gửi link đặt lại mật khẩu vào hộp thư của bạn.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: emailController,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.emailAddress,
+              ),
+              if (errorText != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  errorText!,
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim();
+                      if (email.isEmpty) {
+                        setDialogState(
+                          () => errorText = 'Vui lòng nhập email.',
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        isSubmitting = true;
+                        errorText = null;
+                      });
+                      try {
+                        await context
+                            .read<UserProvider>()
+                            .sendPasswordResetEmail(email);
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Đã gửi email khôi phục mật khẩu. Hãy kiểm tra hộp thư.',
+                            ),
+                          ),
+                        );
+                      } catch (e) {
+                        setDialogState(() {
+                          isSubmitting = false;
+                          errorText = _formatAccountError(e);
+                        });
+                      }
+                    },
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Gửi email'),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(emailController.dispose);
+  }
+
+  void _showEditProfileDialog(BuildContext context) {
+    final user = context.read<UserProvider>();
+    final nameController = TextEditingController(text: user.name);
+    int selectedColor = user.avatarColor.toARGB32();
+    bool isSubmitting = false;
+    String? errorText;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Chỉnh sửa thông tin cá nhân'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tên hiển thị',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLength: 30,
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Màu avatar',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: UserProvider.avatarColors.map((c) {
+                    final value = c['value'] as int;
+                    final isSelected = value == selectedColor;
+                    return GestureDetector(
+                      onTap: () => setDialogState(() => selectedColor = value),
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Color(value),
+                          shape: BoxShape.circle,
+                          border: isSelected
+                              ? Border.all(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  width: 3,
+                                )
+                              : null,
+                        ),
+                        child: isSelected
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 18,
+                              )
+                            : null,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    errorText!,
+                    style: const TextStyle(color: Colors.red, fontSize: 13),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final name = nameController.text.trim();
+                      if (name.isEmpty) {
+                        setDialogState(
+                          () => errorText = 'Vui lòng nhập tên hiển thị.',
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        isSubmitting = true;
+                        errorText = null;
+                      });
+                      try {
+                        await context.read<UserProvider>().updateProfile(
+                          displayName: name,
+                          colorValue: selectedColor,
+                        );
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Đã cập nhật thông tin cá nhân.'),
+                          ),
+                        );
+                      } catch (e) {
+                        setDialogState(() {
+                          isSubmitting = false;
+                          errorText = _formatAccountError(e);
+                        });
+                      }
+                    },
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Lưu'),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(nameController.dispose);
+  }
+
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -509,6 +750,26 @@ class ProfileScreen extends StatelessWidget {
                 ? _buildSignedInHeader(context, userProvider, textColor)
                 : _buildGuestHeader(context, isDark, textColor),
             const Divider(height: 1),
+            if (userProvider.isLoggedIn) ...[
+              _buildSectionHeader('Tài khoản', sectionBgColor, textColor),
+              _buildSettingsTile(
+                context,
+                icon: Icons.edit_outlined,
+                title: 'Chỉnh sửa thông tin cá nhân',
+                subtitle: 'Tên hiển thị và màu avatar',
+                onTap: () => _showEditProfileDialog(context),
+              ),
+              _buildSettingsTile(
+                context,
+                icon: Icons.password_rounded,
+                title: 'Khôi phục mật khẩu',
+                subtitle: 'Gửi email đặt lại mật khẩu',
+                onTap: () => _showPasswordResetDialog(
+                  context,
+                  initialEmail: userProvider.email,
+                ),
+              ),
+            ],
             _buildSectionHeader('Ứng dụng', sectionBgColor, textColor),
             _buildThemeTile(context, isDark, themeProvider),
             _buildSettingsTile(
@@ -613,7 +874,7 @@ class ProfileScreen extends StatelessWidget {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => _showLoginDialog(context),
+            onTap: () => _showEditProfileDialog(context),
             child: CircleAvatar(
               radius: 40,
               backgroundColor: userProvider.avatarColor,
@@ -677,6 +938,14 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+          IconButton(
+            onPressed: () => _showEditProfileDialog(context),
+            icon: Icon(
+              Icons.edit_outlined,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            tooltip: 'Chỉnh sửa',
           ),
         ],
       ),

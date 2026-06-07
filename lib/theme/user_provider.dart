@@ -72,6 +72,32 @@ class UserProvider extends ChangeNotifier {
     await _setBackendUser(user, colorValue);
   }
 
+  Future<void> sendPasswordResetEmail(String email) {
+    return ApiService.sendPasswordResetEmail(email: email);
+  }
+
+  Future<void> updateProfile({
+    required String displayName,
+    required int colorValue,
+    String avatarUrl = '',
+  }) async {
+    final user = await ApiService.updateUserProfile(
+      displayName: displayName,
+      avatarColorValue: colorValue,
+      avatarUrl: avatarUrl,
+    );
+    _user = user;
+    _id = user.id;
+    _name = user.displayName;
+    _email = user.email;
+    _role = user.role;
+    _avatarColorValue = colorValue;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_nameKey, _name);
+    await prefs.setInt(_avatarColorKey, colorValue);
+    notifyListeners();
+  }
+
   Future<void> verifyEmailWithBackend({
     required String email,
     required String code,

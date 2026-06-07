@@ -651,6 +651,57 @@ class ApiService {
     return user;
   }
 
+  static Future<void> sendPasswordResetEmail({required String email}) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty || !normalizedEmail.contains('@')) {
+      throw Exception('Email không hợp lệ.');
+    }
+
+    if (!FirebaseBackendService.isInitialized) {
+      final exists = await _localAccountExists(normalizedEmail);
+      if (!exists) {
+        throw Exception('Không tìm thấy tài khoản với email này.');
+      }
+      throw Exception(
+        'Bản lưu tài khoản trên thiết bị không hỗ trợ gửi email khôi phục. Hãy dùng cấu hình đồng bộ để khôi phục mật khẩu.',
+      );
+    }
+
+    await FirebaseBackendService.sendPasswordResetEmail(email: normalizedEmail);
+  }
+
+  static Future<AppUser> updateUserProfile({
+    required String displayName,
+    required int avatarColorValue,
+    String avatarUrl = '',
+  }) async {
+    final name = displayName.trim();
+    if (name.isEmpty) {
+      throw Exception('Tên hiển thị không được để trống.');
+    }
+    if (name.length > 30) {
+      throw Exception('Tên hiển thị tối đa 30 ký tự.');
+    }
+
+    final AppUser user;
+    if (!FirebaseBackendService.isInitialized) {
+      user = await _updateLocalAccountProfile(
+        displayName: name,
+        avatarUrl: avatarUrl,
+      );
+    } else {
+      user = await FirebaseBackendService.updateProfile(
+        displayName: name,
+        avatarUrl: avatarUrl,
+      );
+    }
+
+    await _saveAuthSession(user, user.id);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('user_avatar_color', avatarColorValue);
+    return user;
+  }
+
   static Future<AppUser?> refreshCurrentUser() async {
     if (!FirebaseBackendService.isInitialized) {
       return getSavedUser();
@@ -764,6 +815,52 @@ class ApiService {
     final user = AppUser.fromJson(found);
     await _saveAuthSession(user, user.id);
     return user;
+  }
+
+  static Future<bool> _localAccountExists(String normalizedEmail) async {
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList(_localAccountsKey) ?? [];
+    return accounts.any((raw) {
+      final account = json.decode(raw) as Map<String, dynamic>;
+      return account['email']?.toString().toLowerCase() == normalizedEmail;
+    });
+  }
+
+  static Future<AppUser> _updateLocalAccountProfile({
+    required String displayName,
+    required String avatarUrl,
+  }) async {
+    final savedUser = await getSavedUser();
+    final token = await getSavedAuthToken();
+    if (savedUser == null || token == null || token.isEmpty) {
+      throw Exception('Cần đăng nhập để chỉnh sửa thông tin cá nhân.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList(_localAccountsKey) ?? [];
+    final decodedAccounts = accounts
+        .map((raw) => json.decode(raw) as Map<String, dynamic>)
+        .toList();
+
+    final index = decodedAccounts.indexWhere(
+      (account) => account['id']?.toString() == savedUser.id,
+    );
+    final updatedUser = savedUser.copyWith(
+      displayName: displayName,
+      avatarUrl: avatarUrl,
+    );
+
+    if (index != -1) {
+      final password = decodedAccounts[index]['password'];
+      decodedAccounts[index] = {...updatedUser.toJson(), 'password': password};
+      await prefs.setStringList(
+        _localAccountsKey,
+        decodedAccounts.map((account) => json.encode(account)).toList(),
+      );
+    }
+
+    await _saveAuthSession(updatedUser, token);
+    return updatedUser;
   }
 
   static Future<List<CommunityMessage>> _fetchLocalCommunityMessages() async {

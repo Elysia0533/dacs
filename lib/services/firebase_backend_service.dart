@@ -119,6 +119,52 @@ class FirebaseBackendService {
     }
   }
 
+  static Future<void> sendPasswordResetEmail({required String email}) async {
+    _ensureReady();
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      throw Exception(_authErrorMessage(e));
+    }
+  }
+
+  static Future<AppUser> updateProfile({
+    required String displayName,
+    String? avatarUrl,
+  }) async {
+    _ensureReady();
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('Cần đăng nhập để chỉnh sửa thông tin cá nhân.');
+    }
+
+    final name = displayName.trim();
+    if (name.isEmpty) {
+      throw Exception('Tên hiển thị không được để trống.');
+    }
+    if (name.length > 30) {
+      throw Exception('Tên hiển thị tối đa 30 ký tự.');
+    }
+
+    try {
+      await user.updateDisplayName(name);
+      if (avatarUrl != null) {
+        await user.updatePhotoURL(avatarUrl.trim());
+      }
+      await user.reload();
+      final refreshedUser = _auth.currentUser ?? user;
+      await _db.collection('users').doc(refreshedUser.uid).set({
+        'displayName': name,
+        'avatarUrl': avatarUrl?.trim() ?? refreshedUser.photoURL ?? '',
+        'emailVerified': refreshedUser.emailVerified,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return _appUserFromFirebase(refreshedUser);
+    } on firebase_auth.FirebaseAuthException catch (e) {
+      throw Exception(_authErrorMessage(e));
+    }
+  }
+
   static Future<AppUser> confirmEmailVerified({required String email}) async {
     _ensureReady();
     final user = _auth.currentUser;

@@ -44,4 +44,22 @@ class AppUser {
       'emailVerified': emailVerified,
     };
   }
+
+  AppUser copyWith({
+    String? id,
+    String? email,
+    String? displayName,
+    String? avatarUrl,
+    String? role,
+    bool? emailVerified,
+  }) {
+    return AppUser(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      displayName: displayName ?? this.displayName,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      role: role ?? this.role,
+      emailVerified: emailVerified ?? this.emailVerified,
+    );
+  }
 }
