@@ -204,6 +204,23 @@ class _ReadingScreenState extends State<ReadingScreen> {
     );
   }
 
+  void _handleReaderMenuAction(String action) {
+    switch (action) {
+      case 'language':
+        setState(() => _showEnglish = !_showEnglish);
+        break;
+      case 'bookmarks':
+        _showBookmarks();
+        break;
+      case 'settings':
+        _showSettings();
+        break;
+      case 'audio':
+        _toggleTts();
+        break;
+    }
+  }
+
   @override
   void dispose() {
     _historySaveTimer?.cancel();
@@ -245,14 +262,10 @@ class _ReadingScreenState extends State<ReadingScreen> {
                       const SizedBox(height: 24),
                       Text(_currentContent, style: settings.bodyTextStyle),
                       const SizedBox(height: 80),
-                      Center(
-                        child: Text(
-                          'Hết nội dung',
-                          style: TextStyle(
-                            color: settings.textColor.withValues(alpha: 0.5),
-                            fontSize: 14,
-                          ),
-                        ),
+                      _TextEndCard(
+                        textColor: settings.textColor,
+                        accentColor: Theme.of(context).primaryColor,
+                        progress: _scrollProgress,
                       ),
                       const SizedBox(height: 40),
                     ],
@@ -269,20 +282,22 @@ class _ReadingScreenState extends State<ReadingScreen> {
                 opacity: _showToolbar ? 1 : 0,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: settings.bgColor,
+                    color: settings.bgColor.withValues(alpha: 0.98),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: settings.textColor.withValues(alpha: 0.08),
+                      ),
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 8,
+                        blurRadius: 10,
                       ),
                     ],
                   ),
                   child: SafeArea(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 4,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
                       child: Row(
                         children: [
                           IconButton(
@@ -294,30 +309,36 @@ class _ReadingScreenState extends State<ReadingScreen> {
                             onPressed: () => Navigator.pop(context),
                           ),
                           Expanded(
-                            child: Text(
-                              widget.story.title,
-                              style: settings.bodyTextStyle.copyWith(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  widget.story.title,
+                                  style: settings.bodyTextStyle.copyWith(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _showEnglish ? 'Bản tiếng Anh' : 'Văn bản',
+                                  style: TextStyle(
+                                    color: settings.textColor.withValues(
+                                      alpha: 0.58,
+                                    ),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
-                          if (widget.story.contentEng.isNotEmpty)
-                            IconButton(
-                              icon: Icon(
-                                Icons.language,
-                                color: _showEnglish
-                                    ? Theme.of(context).primaryColor
-                                    : settings.textColor,
-                              ),
-                              tooltip: _showEnglish
-                                  ? 'Xem tiếng Việt'
-                                  : 'Xem tiếng Anh',
-                              onPressed: () =>
-                                  setState(() => _showEnglish = !_showEnglish),
-                            ),
                           IconButton(
                             icon: Icon(
                               _isBookmarked
@@ -332,31 +353,50 @@ class _ReadingScreenState extends State<ReadingScreen> {
                                 : 'Thêm bookmark',
                             onPressed: _toggleBookmark,
                           ),
-                          IconButton(
+                          PopupMenuButton<String>(
+                            tooltip: 'Tác vụ đọc',
                             icon: Icon(
-                              Icons.bookmarks_outlined,
+                              Icons.more_vert_rounded,
                               color: settings.textColor,
                             ),
-                            tooltip: 'Danh sách bookmark',
-                            onPressed: _showBookmarks,
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.text_fields_rounded,
-                              color: settings.textColor,
-                            ),
-                            onPressed: _showSettings,
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              _isSpeaking && !_isPaused
-                                  ? Icons.pause_circle_outline
-                                  : Icons.play_circle_outline,
-                              color: _isSpeaking
-                                  ? Theme.of(context).primaryColor
-                                  : settings.textColor,
-                            ),
-                            onPressed: _toggleTts,
+                            onSelected: _handleReaderMenuAction,
+                            itemBuilder: (context) => [
+                              if (widget.story.contentEng.isNotEmpty)
+                                PopupMenuItem(
+                                  value: 'language',
+                                  child: _TextReaderMenuItem(
+                                    icon: Icons.language,
+                                    label: _showEnglish
+                                        ? 'Xem tiếng Việt'
+                                        : 'Xem tiếng Anh',
+                                  ),
+                                ),
+                              const PopupMenuItem(
+                                value: 'bookmarks',
+                                child: _TextReaderMenuItem(
+                                  icon: Icons.bookmarks_outlined,
+                                  label: 'Danh sách bookmark',
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'settings',
+                                child: _TextReaderMenuItem(
+                                  icon: Icons.text_fields_rounded,
+                                  label: 'Cài đặt chữ',
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'audio',
+                                child: _TextReaderMenuItem(
+                                  icon: _isSpeaking && !_isPaused
+                                      ? Icons.pause_circle_outline
+                                      : Icons.play_circle_outline,
+                                  label: _isSpeaking && !_isPaused
+                                      ? 'Tạm dừng audio'
+                                      : 'Đọc bằng audio',
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -377,55 +417,82 @@ class _ReadingScreenState extends State<ReadingScreen> {
                   duration: const Duration(milliseconds: 250),
                   opacity: _showToolbar ? 1 : 0,
                   child: Container(
-                    color: settings.bgColor,
+                    decoration: BoxDecoration(
+                      color: settings.bgColor.withValues(alpha: 0.98),
+                      border: Border(
+                        top: BorderSide(
+                          color: settings.textColor.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.10),
+                          blurRadius: 14,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
                     child: SafeArea(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          LinearProgressIndicator(
+                            value: _scrollProgress.clamp(0.0, 1.0),
+                            minHeight: 2,
+                            backgroundColor: settings.textColor.withValues(
+                              alpha: 0.10,
+                            ),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).primaryColor,
+                            ),
+                          ),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                            child: Row(
+                            child: Column(
                               children: [
-                                Text(
-                                  '${(_scrollProgress * 100).toInt()}%',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: settings.textColor.withValues(
-                                      alpha: 0.6,
-                                    ),
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 6,
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        _showEnglish
+                                            ? 'Bản tiếng Anh'
+                                            : 'Văn bản',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: settings.textColor.withValues(
+                                            alpha: 0.68,
+                                          ),
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                     ),
-                                    child: Slider(
-                                      value: _scrollProgress.clamp(0.0, 1.0),
-                                      onChanged: (v) {
-                                        final max = _scrollController
-                                            .position
-                                            .maxScrollExtent;
-                                        _scrollController.jumpTo(v * max);
-                                      },
-                                      activeColor: Theme.of(
-                                        context,
-                                      ).primaryColor,
-                                      inactiveColor: settings.textColor
-                                          .withValues(alpha: 0.2),
+                                    Text(
+                                      '${(_scrollProgress * 100).round()}%',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).primaryColor,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    thumbShape: const RoundSliderThumbShape(
+                                      enabledThumbRadius: 6,
                                     ),
                                   ),
-                                ),
-                                Text(
-                                  'Cuộn để đọc',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: settings.textColor.withValues(
-                                      alpha: 0.4,
-                                    ),
+                                  child: Slider(
+                                    value: _scrollProgress.clamp(0.0, 1.0),
+                                    onChanged: (v) {
+                                      final max = _scrollController
+                                          .position
+                                          .maxScrollExtent;
+                                      _scrollController.jumpTo(v * max);
+                                    },
+                                    activeColor: Theme.of(context).primaryColor,
+                                    inactiveColor: settings.textColor
+                                        .withValues(alpha: 0.2),
                                   ),
                                 ),
                               ],
@@ -508,6 +575,75 @@ class _ReaderAudioBar extends StatelessWidget {
             const SizedBox(width: 4),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TextReaderMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _TextReaderMenuItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [Icon(icon, size: 20), const SizedBox(width: 12), Text(label)],
+    );
+  }
+}
+
+class _TextEndCard extends StatelessWidget {
+  final Color textColor;
+  final Color accentColor;
+  final double progress;
+
+  const _TextEndCard({
+    required this.textColor,
+    required this.accentColor,
+    required this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: textColor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: textColor.withValues(alpha: 0.10)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.check_circle_outline_rounded,
+            color: progress >= 0.98
+                ? accentColor
+                : textColor.withValues(alpha: 0.54),
+            size: 28,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Hết nội dung',
+            style: TextStyle(
+              color: textColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tiến độ ${((progress.clamp(0.0, 1.0)) * 100).round()}%',
+            style: TextStyle(
+              color: textColor.withValues(alpha: 0.58),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

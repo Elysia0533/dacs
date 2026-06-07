@@ -348,6 +348,20 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     );
   }
 
+  void _handleReaderMenuAction(String action) {
+    switch (action) {
+      case 'bookmarks':
+        _showBookmarks();
+        break;
+      case 'settings':
+        _showSettings();
+        break;
+      case 'audio':
+        _toggleTts();
+        break;
+    }
+  }
+
   @override
   void dispose() {
     _tts.stop();
@@ -459,36 +473,17 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                         constraints: const BoxConstraints(maxWidth: 760),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(20, 32, 20, 120),
-                          child: _currentIndex < _chapters.length - 1
-                              ? FilledButton.icon(
-                                  onPressed: () =>
-                                      _goToChapter(_currentIndex + 1),
-                                  icon: const Icon(Icons.arrow_forward_rounded),
-                                  label: Text(
-                                    'Chương tiếp: ${_chapters[_currentIndex + 1].title}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                )
-                              : Center(
-                                  child: Text(
-                                    'Đã đọc hết truyện',
-                                    style: TextStyle(
-                                      color: settings.textColor.withValues(
-                                        alpha: 0.6,
-                                      ),
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
+                          child: _ChapterEndCard(
+                            currentTitle: ch.title,
+                            nextTitle: _currentIndex < _chapters.length - 1
+                                ? _chapters[_currentIndex + 1].title
+                                : null,
+                            textColor: settings.textColor,
+                            accentColor: Theme.of(context).primaryColor,
+                            onNext: _currentIndex < _chapters.length - 1
+                                ? () => _goToChapter(_currentIndex + 1)
+                                : null,
+                          ),
                         ),
                       ),
                     ),
@@ -505,20 +500,22 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                 opacity: _showBars ? 1 : 0,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: settings.bgColor,
+                    color: settings.bgColor.withValues(alpha: 0.98),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: settings.textColor.withValues(alpha: 0.08),
+                      ),
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 8,
+                        blurRadius: 10,
                       ),
                     ],
                   ),
                   child: SafeArea(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 4,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
                       child: Row(
                         children: [
                           IconButton(
@@ -530,14 +527,34 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                             onPressed: () => Navigator.pop(context),
                           ),
                           Expanded(
-                            child: Text(
-                              widget.story.title,
-                              style: settings.bodyTextStyle.copyWith(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  widget.story.title,
+                                  style: settings.bodyTextStyle.copyWith(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  ch.title,
+                                  style: TextStyle(
+                                    color: settings.textColor.withValues(
+                                      alpha: 0.58,
+                                    ),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
                           IconButton(
@@ -545,6 +562,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                               Icons.menu_book_outlined,
                               color: settings.textColor,
                             ),
+                            tooltip: 'Mục lục',
                             onPressed: _showToc,
                           ),
                           IconButton(
@@ -561,31 +579,40 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                                 : 'Thêm bookmark',
                             onPressed: _toggleBookmark,
                           ),
-                          IconButton(
+                          PopupMenuButton<String>(
+                            tooltip: 'Tác vụ đọc',
                             icon: Icon(
-                              Icons.bookmarks_outlined,
+                              Icons.more_vert_rounded,
                               color: settings.textColor,
                             ),
-                            tooltip: 'Danh sách bookmark',
-                            onPressed: _showBookmarks,
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.text_fields_rounded,
-                              color: settings.textColor,
-                            ),
-                            onPressed: _showSettings,
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              _isSpeaking && !_isPaused
-                                  ? Icons.pause_circle_outline
-                                  : Icons.play_circle_outline,
-                              color: _isSpeaking
-                                  ? Theme.of(context).primaryColor
-                                  : settings.textColor,
-                            ),
-                            onPressed: _toggleTts,
+                            onSelected: _handleReaderMenuAction,
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'bookmarks',
+                                child: _ReaderMenuItem(
+                                  icon: Icons.bookmarks_outlined,
+                                  label: 'Danh sách bookmark',
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'settings',
+                                child: _ReaderMenuItem(
+                                  icon: Icons.text_fields_rounded,
+                                  label: 'Cài đặt chữ',
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'audio',
+                                child: _ReaderMenuItem(
+                                  icon: _isSpeaking && !_isPaused
+                                      ? Icons.pause_circle_outline
+                                      : Icons.play_circle_outline,
+                                  label: _isSpeaking && !_isPaused
+                                      ? 'Tạm dừng audio'
+                                      : 'Đọc bằng audio',
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -606,13 +633,37 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                   duration: const Duration(milliseconds: 250),
                   opacity: _showBars ? 1 : 0,
                   child: Container(
-                    color: settings.bgColor,
+                    decoration: BoxDecoration(
+                      color: settings.bgColor.withValues(alpha: 0.98),
+                      border: Border(
+                        top: BorderSide(
+                          color: settings.textColor.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.10),
+                          blurRadius: 14,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
                     child: SafeArea(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          LinearProgressIndicator(
+                            value: progress.clamp(0.0, 1.0),
+                            minHeight: 2,
+                            backgroundColor: settings.textColor.withValues(
+                              alpha: 0.10,
+                            ),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).primaryColor,
+                            ),
+                          ),
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                             child: Row(
                               children: [
                                 IconButton(
@@ -629,6 +680,33 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                                 Expanded(
                                   child: Column(
                                     children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              'Chương ${_currentIndex + 1}/${_chapters.length}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: settings.textColor
+                                                    .withValues(alpha: 0.68),
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            '${(progress * 100).round()}%',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Theme.of(
+                                                context,
+                                              ).primaryColor,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                       SliderTheme(
                                         data: SliderTheme.of(context).copyWith(
                                           thumbShape:
@@ -650,24 +728,13 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                                         ),
                                       ),
                                       Text(
-                                        'Chương ${_currentIndex + 1} / ${_chapters.length}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: settings.textColor.withValues(
-                                            alpha: 0.6,
-                                          ),
-                                        ),
-                                      ),
-                                      Text(
-                                        _currentIndex < _chapters.length - 1
-                                            ? 'Cuối chương: vuốt thêm để sang chương tiếp'
-                                            : 'Chương cuối',
+                                        ch.title,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          fontSize: 10,
+                                          fontSize: 11,
                                           color: settings.textColor.withValues(
-                                            alpha: 0.42,
+                                            alpha: 0.48,
                                           ),
                                         ),
                                       ),
@@ -775,6 +842,106 @@ class _ReaderAudioBar extends StatelessWidget {
             const SizedBox(width: 4),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ReaderMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _ReaderMenuItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [Icon(icon, size: 20), const SizedBox(width: 12), Text(label)],
+    );
+  }
+}
+
+class _ChapterEndCard extends StatelessWidget {
+  final String currentTitle;
+  final String? nextTitle;
+  final Color textColor;
+  final Color accentColor;
+  final VoidCallback? onNext;
+
+  const _ChapterEndCard({
+    required this.currentTitle,
+    required this.nextTitle,
+    required this.textColor,
+    required this.accentColor,
+    required this.onNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasNext = nextTitle != null && onNext != null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: textColor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: textColor.withValues(alpha: 0.10)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            hasNext
+                ? Icons.keyboard_double_arrow_down_rounded
+                : Icons.check_circle_outline_rounded,
+            color: hasNext ? accentColor : textColor.withValues(alpha: 0.54),
+            size: 28,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            hasNext ? 'Hết chương' : 'Đã đọc hết truyện',
+            style: TextStyle(
+              color: textColor,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            currentTitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: textColor.withValues(alpha: 0.58),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (hasNext) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onNext,
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: Text(
+                  nextTitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: accentColor,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
