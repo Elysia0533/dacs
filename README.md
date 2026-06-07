@@ -67,6 +67,8 @@ vBook được xây dựng để hỗ trợ người dùng đọc và quản lý
 - Lưu chương đang đọc và vị trí cuộn.
 - Tùy chỉnh cỡ chữ, font, nền đọc và giãn dòng.
 - Hỗ trợ giao diện sáng/tối.
+- Khi đọc tới cuối chương, app dừng lại; người dùng vuốt thêm một lần nữa hoặc
+  bấm nút chương tiếp thì mới chuyển chương.
 
 ### Audio Đọc Truyện
 
@@ -80,6 +82,8 @@ vBook được xây dựng để hỗ trợ người dùng đọc và quản lý
 - Đăng ký bằng email và mật khẩu.
 - Đăng nhập bằng Firebase Authentication.
 - Gửi email xác minh tài khoản.
+- Khôi phục mật khẩu bằng email.
+- Chỉnh sửa tên hiển thị và màu avatar.
 - Lưu hồ sơ người dùng trên Cloud Firestore.
 - Đồng bộ thư viện cá nhân và tiến độ đọc theo từng user.
 - Có fallback local để app vẫn dùng được khi Firebase chưa sẵn sàng.
@@ -90,6 +94,14 @@ vBook được xây dựng để hỗ trợ người dùng đọc và quản lý
 - Người dùng đã đăng nhập và xác minh email có thể gửi tin nhắn.
 - Tin nhắn được lưu trên Cloud Firestore.
 - Admin có thể quản lý dữ liệu theo Firestore Rules.
+
+### Quản Trị
+
+- Tài khoản admin hiển thị nhãn `Quản trị viên` trong tab Cá nhân.
+- Admin có khu vực tác vụ riêng để mở nhanh màn Khám phá, kiểm tra cộng đồng và
+  làm mới quyền tài khoản.
+- Trong Khám phá, admin có nút quét thư mục Drive để nhập thêm link folder và
+  kiểm tra dữ liệu truyện.
 
 ## Kiến Trúc Tổng Quan
 
@@ -211,6 +223,10 @@ Email admin trong rules hiện tại:
 vglduc25@gmail.com
 ```
 
+App cũng nhận email này là admin mặc định trong `lib/firebase_config.dart`.
+Firestore Rules dùng email admin để cấp quyền phía database, còn Flutter UI dùng
+danh sách admin trong app để hiển thị nhãn và tác vụ quản trị.
+
 ## Cấu Hình Google Drive
 
 App đọc truyện từ Google Drive qua Drive API. API key được truyền khi chạy hoặc
@@ -284,11 +300,14 @@ Checklist test trên điện thoại:
 - Tải truyện về máy và đọc offline.
 - Đổi theme sáng/tối.
 - Tùy chỉnh font, cỡ chữ và nền đọc.
+- Cuộn tới cuối chương EPUB, kiểm tra app không tự nhảy chương; vuốt thêm lần
+  nữa để chuyển chương.
 - Bật Text-to-Speech.
 - Đăng ký tài khoản mới.
 - Xác minh email.
 - Đăng nhập lại.
 - Gửi tin nhắn cộng đồng.
+- Đăng nhập bằng email admin, kiểm tra nhãn Quản trị viên và mục Quản trị.
 - Đọc vài chương, thoát app, mở lại và kiểm tra tiến độ đọc.
 
 ## Trạng Thái Hoàn Thiện
@@ -303,11 +322,12 @@ Dự án hiện đã có các phần quan trọng cho một app đọc truyện 
 - Đăng ký, đăng nhập và xác minh email bằng Firebase.
 - Đồng bộ thư viện, tiến độ đọc và tin nhắn cộng đồng bằng Firestore.
 - Có rules bảo mật Firestore.
+- Có khôi phục mật khẩu, chỉnh sửa thông tin cá nhân và khu vực tác vụ admin.
 - Có APK release để test trên thiết bị thật.
 
-Mức độ hoàn thiện hiện tại phù hợp để demo và bảo vệ đồ án. Phần còn lại chủ yếu
-là test thực tế trên điện thoại, ghi nhận lỗi nhỏ nếu có và chuẩn bị ảnh minh
-họa cho báo cáo/trình bày.
+Mức độ hoàn thiện hiện tại ước khoảng 90-95% cho phạm vi đồ án. App phù hợp để
+demo và bảo vệ, phần còn lại chủ yếu là test thực tế trên điện thoại, ghi nhận
+lỗi nhỏ nếu có và chuẩn bị ảnh minh họa cho báo cáo/trình bày.
 
 ## Hướng Phát Triển
 
