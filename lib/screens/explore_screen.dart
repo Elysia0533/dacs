@@ -288,6 +288,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _buildSourceDashboard(
+                  isDark: isDark,
+                  accentColor: accentColor,
+                  isAdmin: userProvider.isAdmin,
+                ),
                 if (_allGenres.length > 1)
                   _GenreChipBar(
                     genres: _allGenres,
@@ -305,6 +310,138 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 Expanded(child: _buildStoryGrid(isDark)),
               ],
             ),
+    );
+  }
+
+  Widget _buildSourceDashboard({
+    required bool isDark,
+    required Color accentColor,
+    required bool isAdmin,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final epubCount = _serverStories
+        .where((story) => story.fileType.toLowerCase() == 'epub')
+        .length;
+    final pdfCount = _serverStories
+        .where((story) => story.fileType.toLowerCase() == 'pdf')
+        .length;
+    final txtCount = _serverStories
+        .where((story) => story.fileType.toLowerCase() == 'txt')
+        .length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.10),
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.cloud_queue_rounded, color: accentColor),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Nguồn truyện Drive',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Quét thư mục, lọc thể loại và mở truyện trực tiếp',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton.filledTonal(
+                onPressed: _refreshServerStories,
+                tooltip: 'Làm mới Drive',
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+              if (isAdmin) ...[
+                const SizedBox(width: 6),
+                IconButton.filled(
+                  onPressed: _importFromDriveDialog,
+                  tooltip: 'Quét thư mục Drive',
+                  icon: const Icon(Icons.add_link_rounded),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _SourceStatPill(
+                  label: 'Tổng',
+                  value: '${_serverStories.length}',
+                  color: accentColor,
+                  icon: Icons.menu_book_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SourceStatPill(
+                  label: 'EPUB',
+                  value: '$epubCount',
+                  color: const Color(0xFF4E8F7E),
+                  icon: Icons.article_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SourceStatPill(
+                  label: 'PDF',
+                  value: '$pdfCount',
+                  color: const Color(0xFFB45D5D),
+                  icon: Icons.picture_as_pdf_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SourceStatPill(
+                  label: 'TXT',
+                  value: '$txtCount',
+                  color: const Color(0xFF8A6F34),
+                  icon: Icons.text_snippet_rounded,
+                  isDark: isDark,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -386,7 +523,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: 0.54,
+        childAspectRatio: 0.50,
         crossAxisSpacing: 12,
         mainAxisSpacing: 16,
       ),
@@ -472,6 +609,71 @@ class _GenreChipBar extends StatelessWidget {
   }
 }
 
+class _SourceStatPill extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final IconData icon;
+  final bool isDark;
+
+  const _SourceStatPill({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF171B19) : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StoryCard extends StatelessWidget {
   final Story story;
   final bool isDark;
@@ -480,6 +682,12 @@ class _StoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final type = story.fileType.isEmpty ? 'EPUB' : story.fileType.toUpperCase();
+    final chapterText = story.totalChapters > 1
+        ? '${story.totalChapters} chương'
+        : type;
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -491,16 +699,68 @@ class _StoryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: StoryCoverImage(
-              imagePath: story.iconUrl,
-              driveFileId: story.driveFileId,
-              fileType: story.fileType,
-              width: double.infinity,
-              height: double.infinity,
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: isDark
-                  ? Colors.grey.shade800
-                  : Colors.grey.shade300,
+            child: Stack(
+              children: [
+                StoryCoverImage(
+                  imagePath: story.iconUrl,
+                  driveFileId: story.driveFileId,
+                  fileType: story.fileType,
+                  width: double.infinity,
+                  height: double.infinity,
+                  borderRadius: BorderRadius.circular(8),
+                  backgroundColor: isDark
+                      ? Colors.grey.shade800
+                      : Colors.grey.shade300,
+                ),
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      type,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 6,
+                  right: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.70),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      chapterText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 6),
@@ -512,7 +772,7 @@ class _StoryCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
               fontSize: 13,
               height: 1.25,
-              color: isDark ? Colors.white : Colors.black87,
+              color: colorScheme.onSurface,
             ),
           ),
           if (story.author.isNotEmpty) ...[

@@ -498,6 +498,12 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 18),
+                  _buildStoryMetaPanel(isDark),
+                  if (_story.genres.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _buildGenreChips(),
+                  ],
                 ],
               ),
             ),
@@ -586,6 +592,171 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
           fontWeight: FontWeight.w500,
         ),
       ),
+    );
+  }
+
+  Widget _buildStoryMetaPanel(bool isDark) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final sourceLabel = _story.isFromDrive
+        ? 'Google Drive'
+        : (_story.isLocal ? 'Thiết bị' : 'Thư viện');
+    final statusLabel = _story.localPath.isNotEmpty ? 'Offline' : 'Online';
+    final chapterLabel = _story.totalChapters > 1
+        ? '${_story.totalChapters}'
+        : (_story.savedChapterIndex > 0
+              ? '${_story.savedChapterIndex + 1}'
+              : '1');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF171B19) : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _StoryMetaItem(
+                  icon: Icons.source_rounded,
+                  label: 'Nguồn',
+                  value: sourceLabel,
+                  color: colorScheme.primary,
+                ),
+              ),
+              Expanded(
+                child: _StoryMetaItem(
+                  icon: Icons.article_rounded,
+                  label: 'Định dạng',
+                  value: _storyFileType.toUpperCase(),
+                  color: const Color(0xFF5A7DB8),
+                ),
+              ),
+              Expanded(
+                child: _StoryMetaItem(
+                  icon: Icons.menu_book_rounded,
+                  label: 'Chương',
+                  value: chapterLabel,
+                  color: const Color(0xFF8A6F34),
+                ),
+              ),
+              Expanded(
+                child: _StoryMetaItem(
+                  icon: Icons.offline_pin_rounded,
+                  label: 'Trạng thái',
+                  value: statusLabel,
+                  color: const Color(0xFF4E8F7E),
+                ),
+              ),
+            ],
+          ),
+          if (_story.author.isNotEmpty) ...[
+            const Divider(height: 20),
+            Row(
+              children: [
+                Icon(
+                  Icons.person_outline_rounded,
+                  size: 18,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _story.author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colorScheme.onSurface,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenreChips() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _story.genres.take(10).map((genre) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: colorScheme.primary.withValues(alpha: 0.18),
+            ),
+          ),
+          child: Text(
+            genre,
+            style: TextStyle(
+              color: colorScheme.primary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _StoryMetaItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StoryMetaItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 19),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: colorScheme.onSurface,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: colorScheme.onSurfaceVariant,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

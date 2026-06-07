@@ -416,79 +416,222 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () => _openStory(story),
       child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        height: 92,
+        margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        height: 112,
         decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest.withValues(
-            alpha: isDark ? 0.42 : 0.68,
-          ),
+          color: isDark ? const Color(0xFF171B19) : Colors.white,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: colorScheme.outline.withValues(alpha: 0.18),
+            color: colorScheme.outline.withValues(alpha: 0.16),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 76,
+                height: double.infinity,
+                child: StoryCoverImage(
+                  imagePath: story.iconUrl,
+                  driveFileId: story.driveFileId,
+                  fileType: story.fileType,
+                  width: 76,
+                  height: double.infinity,
+                  borderRadius: BorderRadius.zero,
+                  backgroundColor: isDark ? Colors.black26 : Colors.white,
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.play_circle_rounded,
+                            color: colorScheme.primary,
+                            size: 17,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Đọc tiếp',
+                            style: TextStyle(
+                              color: colorScheme.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        story.title,
+                        style: TextStyle(
+                          color: colorScheme.onSurface,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          height: 1.16,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _getProgressLabel(story),
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            color: colorScheme.onSurfaceVariant,
+                            size: 14,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        child: Row(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: StoryCoverImage(
-                imagePath: story.iconUrl,
-                driveFileId: story.driveFileId,
-                fileType: story.fileType,
-                width: 50,
-                height: 72,
-                borderRadius: BorderRadius.circular(8),
-                backgroundColor: isDark ? Colors.black26 : Colors.white,
+      ),
+    );
+  }
+
+  Widget _buildShelfDashboard(bool isDark) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final readingCount = _personalStories
+        .where((story) => story.savedChapterIndex > 0)
+        .length;
+    final downloadedCount = _personalStories
+        .where((story) => story.localPath.isNotEmpty)
+        .length;
+    final driveCount = _personalStories
+        .where((story) => story.isFromDrive)
+        .length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.10),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.auto_stories_rounded,
+                  color: colorScheme.primary,
+                ),
               ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
+              const SizedBox(width: 10),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Đọc tiếp',
-                      style: TextStyle(
-                        color: colorScheme.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      story.title,
+                      'Kệ sách của bạn',
                       style: TextStyle(
                         color: colorScheme.onSurface,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        height: 1.1,
                       ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Truyện đã tải, đang đọc và lịch sử gần đây',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _getProgressLabel(story),
                       style: TextStyle(
                         color: colorScheme.onSurfaceVariant,
                         fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Icon(
-                Icons.arrow_forward_ios,
-                color: colorScheme.onSurfaceVariant,
-                size: 16,
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _ShelfStatPill(
+                  label: 'Tổng',
+                  value: '${_personalStories.length}',
+                  icon: Icons.library_books_rounded,
+                  color: colorScheme.primary,
+                  isDark: isDark,
+                ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ShelfStatPill(
+                  label: 'Đọc',
+                  value: '$readingCount',
+                  icon: Icons.timeline_rounded,
+                  color: colorScheme.secondary,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ShelfStatPill(
+                  label: 'Offline',
+                  value: '$downloadedCount',
+                  icon: Icons.download_done_rounded,
+                  color: const Color(0xFF4E8F7E),
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _ShelfStatPill(
+                  label: 'Drive',
+                  value: '$driveCount',
+                  icon: Icons.cloud_done_rounded,
+                  color: const Color(0xFF5A7DB8),
+                  isDark: isDark,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -793,6 +936,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Column(
       children: [
+        _buildShelfDashboard(isDark),
         _buildLastReadBanner(isDark),
         _buildHistoryStrip(isDark),
 
@@ -1034,6 +1178,71 @@ class _ViewToggleButton extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ShelfStatPill extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final bool isDark;
+
+  const _ShelfStatPill({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF171B19) : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 15),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
