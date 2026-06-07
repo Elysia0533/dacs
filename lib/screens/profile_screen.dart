@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/reading_marker.dart';
+import '../models/story.dart';
+import '../services/api_service.dart';
 import '../services/firebase_backend_service.dart';
 import '../theme/reading_settings_provider.dart';
 import '../theme/theme_provider.dart';
@@ -782,12 +785,8 @@ class ProfileScreen extends StatelessWidget {
               title: 'Lưu trữ',
               subtitle: 'EPUB, PDF, TXT offline',
             ),
-            _buildSettingsTile(
-              context,
-              icon: Icons.insights_rounded,
-              title: 'Thống kê đọc sách',
-              subtitle: 'Tiến trình và lịch sử đọc',
-            ),
+            _buildSectionHeader('Thống kê kệ sách', sectionBgColor, textColor),
+            _buildLibraryStatsPanel(context),
             _buildSettingsTile(
               context,
               icon: Icons.sync_rounded,
@@ -862,6 +861,154 @@ class ProfileScreen extends StatelessWidget {
       Icons.cloud_off_rounded,
       color: colorScheme.onSurfaceVariant,
       size: 22,
+    );
+  }
+
+  Future<_LibraryStats> _loadLibraryStats() async {
+    final stories = await ApiService.fetchPersonalStories();
+    final storyIds = stories.map((story) => story.id).toSet();
+    final history = (await ApiService.getReadingHistory())
+        .where((marker) => storyIds.contains(marker.storyId))
+        .toList();
+    final lastRead = await ApiService.getLastReadStory();
+
+    return _LibraryStats(
+      stories: stories,
+      history: history,
+      lastRead: lastRead,
+    );
+  }
+
+  Widget _buildLibraryStatsPanel(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return FutureBuilder<_LibraryStats>(
+      future: _loadLibraryStats(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: LinearProgressIndicator(minHeight: 2),
+          );
+        }
+
+        final stats = snapshot.data!;
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF151A18) : colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.14),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.auto_stories_rounded,
+                      color: colorScheme.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Kệ sách của bạn',
+                          style: TextStyle(
+                            color: colorScheme.onSurface,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          stats.lastRead == null
+                              ? 'Chưa có lịch sử đọc gần đây'
+                              : 'Đọc gần nhất: ${stats.lastRead!.title}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _LibraryStatChip(
+                      label: 'Tổng',
+                      value: '${stats.total}',
+                      icon: Icons.library_books_rounded,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _LibraryStatChip(
+                      label: 'Đang đọc',
+                      value: '${stats.reading}',
+                      icon: Icons.timeline_rounded,
+                      color: colorScheme.secondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _LibraryStatChip(
+                      label: 'Offline',
+                      value: '${stats.offline}',
+                      icon: Icons.download_done_rounded,
+                      color: const Color(0xFF4E8F7E),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _LibraryStatChip(
+                      label: 'Drive',
+                      value: '${stats.drive}',
+                      icon: Icons.cloud_done_rounded,
+                      color: const Color(0xFF5A7DB8),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${stats.historyCount} mục lịch sử đọc được lưu trên thiết bị',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1248,6 +1395,95 @@ class ProfileScreen extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LibraryStats {
+  final List<Story> stories;
+  final List<ReadingMarker> history;
+  final Story? lastRead;
+
+  const _LibraryStats({
+    required this.stories,
+    required this.history,
+    required this.lastRead,
+  });
+
+  int get total => stories.length;
+
+  int get reading =>
+      stories.where((story) => story.savedChapterIndex > 0).length;
+
+  int get offline =>
+      stories.where((story) => story.localPath.isNotEmpty).length;
+
+  int get drive => stories.where((story) => story.isFromDrive).length;
+
+  int get historyCount => history.length;
+}
+
+class _LibraryStatChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _LibraryStatChip({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      height: 62,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 19),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

@@ -3,11 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 
 import '../models/story.dart';
-import '../models/reading_marker.dart';
 import '../services/api_service.dart';
 import '../theme/theme_provider.dart';
 import '../utils/file_name_utils.dart';
@@ -18,8 +16,6 @@ import 'community_screen.dart';
 import 'profile_screen.dart';
 
 enum _LibrarySort { recent, title, progress }
-
-const String _showReadingHistoryKey = 'home_show_reading_history';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,24 +29,19 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget?> _lazyTabs = List<Widget?>.filled(4, null);
   List<Story> _personalStories = [];
   List<Story> _filteredStories = [];
-  List<ReadingMarker> _readingHistory = [];
   bool _isLoading = true;
 
   bool _isGridView = true;
   int _columnCount = 2;
   _LibrarySort _sortMode = _LibrarySort.recent;
-  bool _showReadingHistory = false;
 
   bool _isSearching = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  Story? _lastReadStory;
-
   @override
   void initState() {
     super.initState();
-    _loadHomePreferences();
     _loadStories();
   }
 
@@ -63,27 +54,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadStories() async {
     setState(() => _isLoading = true);
     _personalStories = await ApiService.fetchPersonalStories();
-    _readingHistory = await ApiService.getReadingHistory();
-    _readingHistory = _readingHistory
-        .where((marker) => _storyForMarker(marker) != null)
-        .toList();
-    _lastReadStory = await ApiService.getLastReadStory();
     _applySearch();
     setState(() => _isLoading = false);
-  }
-
-  Future<void> _loadHomePreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _showReadingHistory = prefs.getBool(_showReadingHistoryKey) ?? false;
-    });
-  }
-
-  Future<void> _setReadingHistoryVisible(bool visible) async {
-    setState(() => _showReadingHistory = visible);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_showReadingHistoryKey, visible);
   }
 
   void _applySearch() {
@@ -237,18 +209,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    secondary: const Icon(Icons.history_rounded),
-                    title: const Text('Hiển thị lịch sử đọc'),
-                    subtitle: const Text('Tắt để Kệ sách gọn hơn'),
-                    value: _showReadingHistory,
-                    onChanged: (value) {
-                      _setReadingHistoryVisible(value);
-                      setModalState(() {});
-                    },
                   ),
                   if (_isGridView) ...[
                     const SizedBox(height: 16),
@@ -452,412 +412,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return 'Chưa đọc';
   }
 
-  Widget _buildLastReadBanner(bool isDark) {
-    if (_lastReadStory == null) return const SizedBox.shrink();
-    final story = _lastReadStory!;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return GestureDetector(
-      onTap: () => _openStory(story),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-        height: 112,
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF171B19) : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: colorScheme.outline.withValues(alpha: 0.16),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 76,
-                height: double.infinity,
-                child: StoryCoverImage(
-                  imagePath: story.iconUrl,
-                  driveFileId: story.driveFileId,
-                  fileType: story.fileType,
-                  width: 76,
-                  height: double.infinity,
-                  borderRadius: BorderRadius.zero,
-                  backgroundColor: isDark ? Colors.black26 : Colors.white,
-                ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.play_circle_rounded,
-                            color: colorScheme.primary,
-                            size: 17,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Đọc tiếp',
-                            style: TextStyle(
-                              color: colorScheme.primary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        story.title,
-                        style: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          height: 1.16,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 7),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _getProgressLabel(story),
-                              style: TextStyle(
-                                color: colorScheme.onSurfaceVariant,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios,
-                            color: colorScheme.onSurfaceVariant,
-                            size: 14,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShelfDashboard(bool isDark) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final readingCount = _personalStories
-        .where((story) => story.savedChapterIndex > 0)
-        .length;
-    final downloadedCount = _personalStories
-        .where((story) => story.localPath.isNotEmpty)
-        .length;
-    final driveCount = _personalStories
-        .where((story) => story.isFromDrive)
-        .length;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.10),
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.auto_stories_rounded,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Kệ sách của bạn',
-                      style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Truyện đã tải, đang đọc và lịch sử gần đây',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _ShelfStatPill(
-                  label: 'Tổng',
-                  value: '${_personalStories.length}',
-                  icon: Icons.library_books_rounded,
-                  color: colorScheme.primary,
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ShelfStatPill(
-                  label: 'Đọc',
-                  value: '$readingCount',
-                  icon: Icons.timeline_rounded,
-                  color: colorScheme.secondary,
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ShelfStatPill(
-                  label: 'Offline',
-                  value: '$downloadedCount',
-                  icon: Icons.download_done_rounded,
-                  color: const Color(0xFF4E8F7E),
-                  isDark: isDark,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ShelfStatPill(
-                  label: 'Drive',
-                  value: '$driveCount',
-                  icon: Icons.cloud_done_rounded,
-                  color: const Color(0xFF5A7DB8),
-                  isDark: isDark,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Story? _storyForMarker(ReadingMarker marker) {
-    for (final story in _personalStories) {
-      if (story.id == marker.storyId) return story;
-    }
-    return null;
-  }
-
-  Widget _buildHistoryStrip(bool isDark) {
-    if (_readingHistory.isEmpty) return const SizedBox.shrink();
-    final colorScheme = Theme.of(context).colorScheme;
-
-    if (!_showReadingHistory) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: Material(
-          color: isDark
-              ? const Color(0xFF151A18)
-              : colorScheme.primary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () => _setReadingHistoryVisible(true),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.history_rounded,
-                    size: 19,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      'Lịch sử đọc',
-                      style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${_readingHistory.length}',
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    final markers = _readingHistory.take(8).toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            children: [
-              Icon(Icons.history_rounded, size: 18, color: colorScheme.primary),
-              const SizedBox(width: 6),
-              const Text(
-                'Lịch sử đọc',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => _setReadingHistoryVisible(false),
-                icon: const Icon(Icons.keyboard_arrow_up_rounded, size: 18),
-                label: const Text('Ẩn'),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: 112,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: markers.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, index) {
-              final marker = markers[index];
-              final story = _storyForMarker(marker);
-              if (story == null) return const SizedBox.shrink();
-
-              return InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => _openStory(story),
-                child: SizedBox(
-                  width: 76,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Stack(
-                          children: [
-                            StoryCoverImage(
-                              imagePath: story.iconUrl,
-                              driveFileId: story.driveFileId,
-                              fileType: story.fileType,
-                              width: double.infinity,
-                              height: double.infinity,
-                              borderRadius: BorderRadius.circular(8),
-                              backgroundColor: isDark
-                                  ? const Color(0xFF222624)
-                                  : Colors.grey.shade200,
-                            ),
-                            Positioned(
-                              left: 5,
-                              right: 5,
-                              bottom: 5,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.72),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 3,
-                                  ),
-                                  child: Text(
-                                    marker.chapterTitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        story.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildStoryCard(Story story, bool isDark) {
     final colorScheme = Theme.of(context).colorScheme;
     final progressLabel = _getProgressLabel(story);
@@ -1043,17 +597,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Column(
       children: [
-        _buildShelfDashboard(isDark),
-        _buildLastReadBanner(isDark),
-        _buildHistoryStrip(isDark),
-
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            _readingHistory.isEmpty ? 16 : 10,
-            16,
-            8,
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             children: [
               Expanded(
@@ -1285,71 +830,6 @@ class _ViewToggleButton extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ShelfStatPill extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final bool isDark;
-
-  const _ShelfStatPill({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    required this.isDark,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF171B19) : Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: color, size: 15),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }

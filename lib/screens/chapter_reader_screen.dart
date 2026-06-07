@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:epubx/epubx.dart' as epubx;
-import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
 import '../models/story.dart';
 import '../models/reading_marker.dart';
 import '../services/api_service.dart';
 import '../theme/reading_settings_provider.dart';
+import '../widgets/reader_selectable_text.dart';
 
 class ChapterReaderScreen extends StatefulWidget {
   final Story story;
@@ -126,11 +127,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
       final plain = _htmlToPlain(html);
       if (plain.trim().isNotEmpty) {
         out.add(
-          _Chapter(
-            title: ch.Title ?? 'Chương ${out.length + 1}',
-            html: html,
-            plain: plain,
-          ),
+          _Chapter(title: ch.Title ?? 'Chương ${out.length + 1}', plain: plain),
         );
       }
       if (ch.SubChapters != null) {
@@ -141,8 +138,24 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
 
   String _htmlToPlain(String html) {
     return html
+        .replaceAll(RegExp(r'<\s*br\s*/?>', caseSensitive: false), '\n')
+        .replaceAll(
+          RegExp(
+            r'</\s*(p|div|h[1-6]|li|blockquote)\s*>',
+            caseSensitive: false,
+          ),
+          '\n\n',
+        )
         .replaceAll(RegExp(r'<[^>]*>'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll(RegExp(r'[ \t]+\n'), '\n')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
         .trim();
   }
 
@@ -277,6 +290,71 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         duration: const Duration(milliseconds: 1100),
       ),
     );
+  }
+
+  Future<void> _saveSelectionNote(String selectedText) async {
+    if (!_isCurrentBookmarked) {
+      await _toggleBookmark();
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Vị trí này đã được đánh dấu: ${_shortQuote(selectedText)}',
+        ),
+        duration: const Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
+  Future<void> _speakSelection(String selectedText) async {
+    await _applyTtsSettings();
+    await _tts.stop();
+    await _tts.speak(selectedText);
+    if (!mounted) return;
+    setState(() {
+      _isSpeaking = true;
+      _isPaused = false;
+    });
+  }
+
+  void _showSelectionSearch(String selectedText) {
+    if (_chapters.isEmpty) return;
+    final query = selectedText.trim();
+    if (query.isEmpty) return;
+    final count = RegExp(
+      RegExp.escape(query),
+      caseSensitive: false,
+    ).allMatches(_chapters[_currentIndex].plain).length;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SelectionSearchSheet(query: query, count: count),
+    );
+  }
+
+  void _shareSelection(String selectedText) {
+    if (_chapters.isEmpty) return;
+    Clipboard.setData(
+      ClipboardData(
+        text:
+            '"$selectedText"\n\n- ${widget.story.title}, ${_chapters[_currentIndex].title}',
+      ),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đã sao chép đoạn chọn để chia sẻ'),
+        duration: Duration(milliseconds: 1100),
+      ),
+    );
+  }
+
+  String _shortQuote(String value) {
+    final compact = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.length <= 48) return compact;
+    return '${compact.substring(0, 48)}...';
   }
 
   Future<void> _showBookmarks() async {
@@ -432,12 +510,17 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                         constraints: const BoxConstraints(maxWidth: 760),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                          child: Text(
+                          child: ReaderSelectableText(
                             ch.title,
                             style: settings.bodyTextStyle.copyWith(
                               fontSize: settings.fontSize + 4,
                               fontWeight: FontWeight.bold,
                             ),
+                            onNote: _saveSelectionNote,
+                            onSpeak: _speakSelection,
+                            onSearch: _showSelectionSearch,
+                            onSettings: (_) => _showSettings(),
+                            onShare: _shareSelection,
                           ),
                         ),
                       ),
@@ -449,19 +532,14 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                         constraints: const BoxConstraints(maxWidth: 760),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Html(
-                            data: ch.html,
-                            style: {
-                              'body': Style(
-                                fontSize: FontSize(settings.fontSize),
-                                fontFamily: settings.bodyTextStyle.fontFamily,
-                                lineHeight: LineHeight(settings.lineHeight),
-                                color: settings.textColor,
-                                margin: Margins.zero,
-                              ),
-                              'p': Style(margin: Margins.only(bottom: 12)),
-                              'img': Style(display: Display.none),
-                            },
+                          child: ReaderSelectableText(
+                            ch.plain,
+                            style: settings.bodyTextStyle,
+                            onNote: _saveSelectionNote,
+                            onSpeak: _speakSelection,
+                            onSearch: _showSelectionSearch,
+                            onSettings: (_) => _showSettings(),
+                            onShare: _shareSelection,
                           ),
                         ),
                       ),
@@ -847,6 +925,74 @@ class _ReaderAudioBar extends StatelessWidget {
   }
 }
 
+class _SelectionSearchSheet extends StatelessWidget {
+  final String query;
+  final int count;
+
+  const _SelectionSearchSheet({required this.query, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 18,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.search_rounded, color: colorScheme.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Tìm trong chương',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              query,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              count == 0
+                  ? 'Không tìm thấy kết quả trùng khớp.'
+                  : 'Tìm thấy $count kết quả trùng khớp.',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ReaderMenuItem extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1078,9 +1224,8 @@ class _BookmarksSheet extends StatelessWidget {
 
 class _Chapter {
   final String title;
-  final String html;
   final String plain;
-  _Chapter({required this.title, required this.html, required this.plain});
+  _Chapter({required this.title, required this.plain});
 }
 
 class _TocDrawer extends StatefulWidget {

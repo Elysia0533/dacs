@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import '../models/story.dart';
 import '../models/reading_marker.dart';
 import '../services/api_service.dart';
 import '../theme/reading_settings_provider.dart';
+import '../widgets/reader_selectable_text.dart';
 
 class ReadingScreen extends StatefulWidget {
   final Story story;
@@ -163,6 +165,66 @@ class _ReadingScreenState extends State<ReadingScreen> {
     );
   }
 
+  Future<void> _saveSelectionNote(String selectedText) async {
+    if (!_isBookmarked) {
+      await _toggleBookmark();
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Vị trí này đã được đánh dấu: ${_shortQuote(selectedText)}',
+        ),
+        duration: const Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
+  Future<void> _speakSelection(String selectedText) async {
+    await _applyTtsSettings();
+    await _tts.stop();
+    await _tts.speak(selectedText);
+    if (!mounted) return;
+    setState(() {
+      _isSpeaking = true;
+      _isPaused = false;
+    });
+  }
+
+  void _showSelectionSearch(String selectedText) {
+    final query = selectedText.trim();
+    if (query.isEmpty) return;
+    final count = RegExp(
+      RegExp.escape(query),
+      caseSensitive: false,
+    ).allMatches(_currentContent).length;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SelectionSearchSheet(query: query, count: count),
+    );
+  }
+
+  void _shareSelection(String selectedText) {
+    Clipboard.setData(
+      ClipboardData(text: '"$selectedText"\n\n- ${widget.story.title}'),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đã sao chép đoạn chọn để chia sẻ'),
+        duration: Duration(milliseconds: 1100),
+      ),
+    );
+  }
+
+  String _shortQuote(String value) {
+    final compact = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.length <= 48) return compact;
+    return '${compact.substring(0, 48)}...';
+  }
+
   Future<void> _showBookmarks() async {
     final bookmarks = await ApiService.getReadingBookmarks(
       storyId: widget.story.id,
@@ -252,15 +314,28 @@ class _ReadingScreenState extends State<ReadingScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 50),
-                      Text(
+                      ReaderSelectableText(
                         widget.story.title,
                         style: settings.bodyTextStyle.copyWith(
                           fontSize: settings.fontSize + 4,
                           fontWeight: FontWeight.bold,
                         ),
+                        onNote: _saveSelectionNote,
+                        onSpeak: _speakSelection,
+                        onSearch: _showSelectionSearch,
+                        onSettings: (_) => _showSettings(),
+                        onShare: _shareSelection,
                       ),
                       const SizedBox(height: 24),
-                      Text(_currentContent, style: settings.bodyTextStyle),
+                      ReaderSelectableText(
+                        _currentContent,
+                        style: settings.bodyTextStyle,
+                        onNote: _saveSelectionNote,
+                        onSpeak: _speakSelection,
+                        onSearch: _showSelectionSearch,
+                        onSettings: (_) => _showSettings(),
+                        onShare: _shareSelection,
+                      ),
                       const SizedBox(height: 80),
                       _TextEndCard(
                         textColor: settings.textColor,
@@ -573,6 +648,74 @@ class _ReaderAudioBar extends StatelessWidget {
               color: textColor.withValues(alpha: 0.72),
             ),
             const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectionSearchSheet extends StatelessWidget {
+  final String query;
+  final int count;
+
+  const _SelectionSearchSheet({required this.query, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 18,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.search_rounded, color: colorScheme.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Tìm trong chương',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              query,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              count == 0
+                  ? 'Không tìm thấy kết quả trùng khớp.'
+                  : 'Tìm thấy $count kết quả trùng khớp.',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
           ],
         ),
       ),
