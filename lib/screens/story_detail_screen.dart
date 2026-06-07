@@ -58,8 +58,13 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       _downloadTotalBytes = null;
     });
     try {
-      final bytes = await GoogleDriveService.downloadFileBytes(
+      final dir = await getApplicationDocumentsDirectory();
+      final safeTitle = _safeFileName(_story.title);
+      final guessedExt = _storyFileType.isEmpty ? 'epub' : _storyFileType;
+      var file = File('${dir.path}/$safeTitle.$guessedExt');
+      file = await GoogleDriveService.downloadFileToFile(
         _story.driveFileId,
+        file,
         onProgress: (receivedBytes, totalBytes) {
           if (!mounted) return;
           setState(() {
@@ -71,25 +76,15 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
           });
         },
       );
-      final dir = await getApplicationDocumentsDirectory();
 
-      String ext = 'epub';
-      if (bytes.length >= 4) {
-        if (bytes[0] == 0x25 &&
-            bytes[1] == 0x50 &&
-            bytes[2] == 0x44 &&
-            bytes[3] == 0x46) {
-          ext = 'pdf';
-        } else if (bytes[0] == 0x50 && bytes[1] == 0x4B) {
-          ext = 'epub';
-        } else {
-          ext = 'txt';
+      final ext = await _detectFileType(file);
+      if (!file.path.toLowerCase().endsWith('.$ext')) {
+        final renamedFile = File('${dir.path}/$safeTitle.$ext');
+        if (await renamedFile.exists()) {
+          await renamedFile.delete();
         }
+        file = await file.rename(renamedFile.path);
       }
-
-      final safeTitle = _story.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      final file = File('${dir.path}/$safeTitle.$ext');
-      await file.writeAsBytes(bytes);
 
       String iconUrl = _story.iconUrl;
       String description = _story.description;
@@ -166,6 +161,31 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     if (progress == null) return 'Đang tải...';
     final percent = (progress.clamp(0.0, 1.0) * 100).round();
     return 'Đang tải $percent%';
+  }
+
+  String _safeFileName(String value) {
+    final safe = value.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+    return safe.isEmpty ? 'story_${_story.driveFileId}' : safe;
+  }
+
+  Future<String> _detectFileType(File file) async {
+    final stream = file.openRead(0, 4);
+    final header = <int>[];
+    await for (final chunk in stream) {
+      header.addAll(chunk);
+    }
+    if (header.length >= 4) {
+      if (header[0] == 0x25 &&
+          header[1] == 0x50 &&
+          header[2] == 0x44 &&
+          header[3] == 0x46) {
+        return 'pdf';
+      }
+      if (header[0] == 0x50 && header[1] == 0x4B) {
+        return 'epub';
+      }
+    }
+    return 'txt';
   }
 
   String _formatBytes(int bytes) {

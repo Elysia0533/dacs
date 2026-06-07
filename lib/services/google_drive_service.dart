@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -541,6 +542,7 @@ class GoogleDriveService {
   static Future<Uint8List> downloadFileBytes(
     String fileId, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
+    int? maxBytes,
   }) async {
     _ensureApiKey();
 
@@ -553,9 +555,51 @@ class GoogleDriveService {
 
     for (final url in urls) {
       try {
-        return await _downloadBytesFromUrl(url, onProgress: onProgress);
+        return await _downloadBytesFromUrl(
+          url,
+          onProgress: onProgress,
+          maxBytes: maxBytes,
+        );
       } catch (e) {
         lastError = e;
+      }
+    }
+
+    throw Exception('Loi khi tai file tu Drive: $lastError');
+  }
+
+  static Future<File> downloadFileToFile(
+    String fileId,
+    File outputFile, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+  }) async {
+    _ensureApiKey();
+
+    await outputFile.parent.create(recursive: true);
+    final tempFile = File('${outputFile.path}.download');
+    if (await tempFile.exists()) {
+      await tempFile.delete();
+    }
+
+    final urls = _uniqueNonEmpty([
+      getApiDownloadUrl(fileId),
+      getDownloadUrl(fileId),
+      getUserContentDownloadUrl(fileId),
+    ]);
+    Object? lastError;
+
+    for (final url in urls) {
+      try {
+        await _downloadUrlToFile(url, tempFile, onProgress: onProgress);
+        if (await outputFile.exists()) {
+          await outputFile.delete();
+        }
+        return tempFile.rename(outputFile.path);
+      } catch (e) {
+        lastError = e;
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
       }
     }
 
@@ -565,18 +609,43 @@ class GoogleDriveService {
   static Future<Uint8List> _downloadBytesFromUrl(
     String url, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
+    int? maxBytes,
+    String? cookie,
   }) async {
     final request = http.Request('GET', Uri.parse(url));
+    if (cookie != null && cookie.isNotEmpty) {
+      request.headers['Cookie'] = cookie;
+    }
     final response = await request.send().timeout(const Duration(seconds: 25));
 
     if (response.statusCode == 200) {
+      if (_isHtmlResponse(response.headers)) {
+        final htmlBytes = await response.stream.toBytes();
+        final confirmUrl = _readDriveConfirmUrl(url, htmlBytes);
+        if (confirmUrl != null) {
+          return _downloadBytesFromUrl(
+            confirmUrl,
+            onProgress: onProgress,
+            maxBytes: maxBytes,
+            cookie: _cookieFromHeaders(response.headers),
+          );
+        }
+        throw Exception('Drive tra ve trang HTML thay vi noi dung file.');
+      }
+
       final chunks = <int>[];
       var receivedBytes = 0;
       final totalBytes = response.contentLength;
+      if (maxBytes != null && totalBytes != null && totalBytes > maxBytes) {
+        throw Exception('File qua lon de tai nen cho tac vu nay.');
+      }
 
       await for (final chunk in response.stream) {
         chunks.addAll(chunk);
         receivedBytes += chunk.length;
+        if (maxBytes != null && receivedBytes > maxBytes) {
+          throw Exception('File qua lon de tai nen cho tac vu nay.');
+        }
         onProgress?.call(receivedBytes, totalBytes);
       }
 
@@ -589,6 +658,124 @@ class GoogleDriveService {
 
     final errorBody = await response.stream.bytesToString();
     throw Exception('Lỗi khi tải file từ Drive: $errorBody');
+  }
+
+  static Future<void> _downloadUrlToFile(
+    String url,
+    File outputFile, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+    String? cookie,
+  }) async {
+    final request = http.Request('GET', Uri.parse(url));
+    if (cookie != null && cookie.isNotEmpty) {
+      request.headers['Cookie'] = cookie;
+    }
+    final response = await request.send().timeout(const Duration(seconds: 25));
+
+    if (response.statusCode == 200) {
+      if (_isHtmlResponse(response.headers)) {
+        final htmlBytes = await response.stream.toBytes();
+        final confirmUrl = _readDriveConfirmUrl(url, htmlBytes);
+        if (confirmUrl != null) {
+          return _downloadUrlToFile(
+            confirmUrl,
+            outputFile,
+            onProgress: onProgress,
+            cookie: _cookieFromHeaders(response.headers),
+          );
+        }
+        throw Exception('Drive tra ve trang HTML thay vi noi dung file.');
+      }
+
+      final sink = outputFile.openWrite();
+      var receivedBytes = 0;
+      final totalBytes = response.contentLength;
+      try {
+        await for (final chunk in response.stream) {
+          sink.add(chunk);
+          receivedBytes += chunk.length;
+          onProgress?.call(receivedBytes, totalBytes);
+        }
+      } finally {
+        await sink.close();
+      }
+      return;
+    }
+
+    final errorBody = await response.stream.bytesToString();
+    throw Exception('Lỗi khi tải file từ Drive: $errorBody');
+  }
+
+  static bool _isHtmlResponse(Map<String, String> headers) {
+    return (headers['content-type'] ?? '').toLowerCase().contains('text/html');
+  }
+
+  static String? _cookieFromHeaders(Map<String, String> headers) {
+    final raw = headers['set-cookie'];
+    if (raw == null || raw.isEmpty) return null;
+    return raw
+        .split(',')
+        .map((part) => part.split(';').first.trim())
+        .where((part) => part.contains('='))
+        .join('; ');
+  }
+
+  static String? _readDriveConfirmUrl(String baseUrl, Uint8List htmlBytes) {
+    final html = utf8
+        .decode(htmlBytes, allowMalformed: true)
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'");
+
+    final linkPatterns = [
+      RegExp(
+        r'''href=["']([^"']*(?:uc\?export=download|drive\.usercontent\.google\.com/download)[^"']*confirm=[^"']*)["']''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'"downloadUrl"\s*:\s*"([^"]+confirm=[^"]+)"',
+        caseSensitive: false,
+      ),
+    ];
+
+    for (final pattern in linkPatterns) {
+      final match = pattern.firstMatch(html);
+      final rawUrl = match?.group(1);
+      if (rawUrl != null && rawUrl.isNotEmpty) {
+        return _resolveDriveUrl(baseUrl, rawUrl.replaceAll(r'\/', '/'));
+      }
+    }
+
+    final actionMatch = RegExp(
+      r'''<form[^>]+action=["']([^"']+)["']''',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(html);
+    if (actionMatch == null) return null;
+
+    final params = <String, String>{};
+    final inputPattern = RegExp(
+      r'''<input[^>]+name=["']([^"']+)["'][^>]+value=["']([^"']*)["']''',
+      caseSensitive: false,
+      dotAll: true,
+    );
+    for (final match in inputPattern.allMatches(html)) {
+      final name = match.group(1);
+      final value = match.group(2);
+      if (name != null && value != null) params[name] = value;
+    }
+
+    if (!params.containsKey('confirm')) return null;
+    final actionUrl = _resolveDriveUrl(baseUrl, actionMatch.group(1)!);
+    final uri = Uri.parse(actionUrl);
+    return uri
+        .replace(queryParameters: {...uri.queryParameters, ...params})
+        .toString();
+  }
+
+  static String _resolveDriveUrl(String baseUrl, String rawUrl) {
+    if (rawUrl.startsWith('//')) return 'https:$rawUrl';
+    return Uri.parse(baseUrl).resolve(rawUrl).toString();
   }
 
   static bool _looksLikeHtml(Uint8List bytes) {

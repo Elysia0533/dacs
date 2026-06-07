@@ -43,6 +43,7 @@ class ApiService {
   static const String _serverStoriesCachedAtKey =
       'drive_story_catalog_cache_at';
   static const Duration _driveCatalogCacheTtl = Duration(minutes: 30);
+  static const int _maxDriveCoverDownloadBytes = 60 * 1024 * 1024;
   static const String _authTokenKey = 'firebase_auth_token';
   static const String _authUserKey = 'firebase_auth_user';
   static const String _localAccountsKey = 'local_accounts';
@@ -124,7 +125,10 @@ class ApiService {
 
     return _driveCoverTasks.putIfAbsent(id, () async {
       try {
-        final bytes = await GoogleDriveService.downloadFileBytes(id);
+        final bytes = await GoogleDriveService.downloadFileBytes(
+          id,
+          maxBytes: _maxDriveCoverDownloadBytes,
+        );
         final savedPath = await _writeEpubCover(bytes, coverFile);
         if (savedPath.isEmpty) {
           _driveCoverMisses.add(id);
