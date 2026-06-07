@@ -23,6 +23,7 @@ class VBookFirebaseConfig {
   static const String adminEmailsRaw = String.fromEnvironment(
     'VBOOK_ADMIN_EMAILS',
   );
+  static const String defaultAdminEmailsRaw = 'vglduc25@gmail.com';
 
   static bool get isConfigured =>
       apiKey.isNotEmpty &&
@@ -30,7 +31,12 @@ class VBookFirebaseConfig {
       messagingSenderId.isNotEmpty &&
       projectId.isNotEmpty;
 
-  static List<String> get adminEmails => adminEmailsRaw
+  static List<String> get adminEmails => {
+    ..._parseEmails(defaultAdminEmailsRaw),
+    ..._parseEmails(adminEmailsRaw),
+  }.toList();
+
+  static List<String> _parseEmails(String raw) => raw
       .split(RegExp(r'[,;|\s]+'))
       .map((email) => email.trim().toLowerCase())
       .where((email) => email.isNotEmpty)
