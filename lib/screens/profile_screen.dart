@@ -4,6 +4,8 @@ import '../services/firebase_backend_service.dart';
 import '../theme/reading_settings_provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/user_provider.dart';
+import 'community_screen.dart';
+import 'explore_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -770,6 +772,8 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ],
+            if (userProvider.isAdmin)
+              _buildAdminSection(context, sectionBgColor, textColor),
             _buildSectionHeader('Ứng dụng', sectionBgColor, textColor),
             _buildThemeTile(context, isDark, themeProvider),
             _buildSettingsTile(
@@ -1049,6 +1053,54 @@ class ProfileScreen extends StatelessWidget {
         value: isDark,
         onChanged: (_) => themeProvider.toggleTheme(),
       ),
+    );
+  }
+
+  Widget _buildAdminSection(
+    BuildContext context,
+    Color sectionBgColor,
+    Color textColor,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('Quản trị', sectionBgColor, textColor),
+        _buildSettingsTile(
+          context,
+          icon: Icons.add_link_rounded,
+          title: 'Quét thư mục Drive',
+          subtitle: 'Thêm link Drive và làm mới danh sách Khám phá',
+          onTap: () {
+            Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const ExploreScreen()));
+          },
+        ),
+        _buildSettingsTile(
+          context,
+          icon: Icons.forum_outlined,
+          title: 'Kiểm tra cộng đồng',
+          subtitle: 'Đọc và gửi tin nhắn bằng tài khoản admin',
+          onTap: () {
+            Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const CommunityScreen()));
+          },
+        ),
+        _buildSettingsTile(
+          context,
+          icon: Icons.verified_user_outlined,
+          title: 'Làm mới quyền admin',
+          subtitle: 'Cập nhật role từ phiên đăng nhập hiện tại',
+          onTap: () async {
+            await context.read<UserProvider>().refreshSession();
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đã làm mới quyền tài khoản.')),
+            );
+          },
+        ),
+      ],
     );
   }
 

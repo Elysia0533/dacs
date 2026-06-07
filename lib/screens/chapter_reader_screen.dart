@@ -30,6 +30,12 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   bool _isPaused = false;
 
   bool _showBars = true;
+  bool _waitingForExtraSwipeAtEnd = false;
+  bool _isAdvancingFromEndSwipe = false;
+  double _endOverscrollDistance = 0;
+
+  static const double _chapterEndThreshold = 12;
+  static const double _extraSwipeThreshold = 24;
 
   @override
   void initState() {
@@ -146,9 +152,63 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         !_showBars) {
       setState(() => _showBars = true);
     }
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 80) {
-      _goToChapter(_currentIndex + 1, smooth: false);
+
+    final position = _scrollController.position;
+    if (!_isAtChapterEnd(position)) {
+      _waitingForExtraSwipeAtEnd = false;
+      _endOverscrollDistance = 0;
+    }
+  }
+
+  bool _isAtChapterEnd(ScrollMetrics metrics) {
+    return metrics.maxScrollExtent <= 0 ||
+        metrics.pixels >= metrics.maxScrollExtent - _chapterEndThreshold;
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0 || _chapters.isEmpty) return false;
+    if (_currentIndex >= _chapters.length - 1) {
+      _waitingForExtraSwipeAtEnd = false;
+      _endOverscrollDistance = 0;
+      return false;
+    }
+
+    if (notification is ScrollEndNotification) {
+      _waitingForExtraSwipeAtEnd = _isAtChapterEnd(notification.metrics);
+      _endOverscrollDistance = 0;
+      return false;
+    }
+
+    if (notification is OverscrollNotification) {
+      final isPullingPastChapterEnd =
+          notification.overscroll > 0 && _isAtChapterEnd(notification.metrics);
+
+      if (!isPullingPastChapterEnd) {
+        return false;
+      }
+
+      if (!_waitingForExtraSwipeAtEnd || _isAdvancingFromEndSwipe) {
+        return false;
+      }
+
+      _endOverscrollDistance += notification.overscroll;
+      if (_endOverscrollDistance >= _extraSwipeThreshold) {
+        _advanceFromEndSwipe();
+      }
+    }
+
+    return false;
+  }
+
+  Future<void> _advanceFromEndSwipe() async {
+    if (_isAdvancingFromEndSwipe) return;
+    _isAdvancingFromEndSwipe = true;
+    _waitingForExtraSwipeAtEnd = false;
+    _endOverscrollDistance = 0;
+    try {
+      await _goToChapter(_currentIndex + 1, smooth: false);
+    } finally {
+      _isAdvancingFromEndSwipe = false;
     }
   }
 
@@ -156,6 +216,8 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     if (index < 0 || index >= _chapters.length || index == _currentIndex) {
       return;
     }
+    _waitingForExtraSwipeAtEnd = false;
+    _endOverscrollDistance = 0;
     await _stopTts();
     setState(() => _currentIndex = index);
     ApiService.saveChapterProgress(
@@ -274,6 +336,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         child: Stack(
           children: [
             NotificationListener<ScrollNotification>(
+              onNotification: _handleScrollNotification,
               child: CustomScrollView(
                 controller: _scrollController,
                 slivers: [
