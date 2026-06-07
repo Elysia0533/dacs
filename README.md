@@ -42,6 +42,7 @@ vBook được xây dựng để hỗ trợ người dùng đọc và quản lý
 - Tìm kiếm truyện theo tên, tác giả, thể loại.
 - Sắp xếp theo gần đây, tên truyện và tiến độ đọc.
 - Hiển thị truyện đang đọc gần nhất để tiếp tục nhanh.
+- Hiển thị lịch sử đọc gần đây ngay trên kệ sách.
 - Xóa truyện và dọn dữ liệu thuộc phạm vi app.
 
 ### Khám Phá Truyện
@@ -65,6 +66,7 @@ vBook được xây dựng để hỗ trợ người dùng đọc và quản lý
 - Đọc PDF bằng trình đọc PDF riêng.
 - Đọc TXT bằng trình đọc văn bản.
 - Lưu chương đang đọc và vị trí cuộn.
+- Hỗ trợ bookmark chương/vị trí đọc và mở lại từ danh sách bookmark.
 - Tùy chỉnh cỡ chữ, font, nền đọc và giãn dòng.
 - Hỗ trợ giao diện sáng/tối.
 - Khi đọc tới cuối chương, app dừng lại; người dùng vuốt thêm một lần nữa hoặc
@@ -323,6 +325,7 @@ Dự án hiện đã có các phần quan trọng cho một app đọc truyện 
 - Đồng bộ thư viện, tiến độ đọc và tin nhắn cộng đồng bằng Firestore.
 - Có rules bảo mật Firestore.
 - Có khôi phục mật khẩu, chỉnh sửa thông tin cá nhân và khu vực tác vụ admin.
+- Có bookmark, lịch sử đọc gần đây và reader chuyên nghiệp hơn cho EPUB/TXT.
 - Có APK release để test trên thiết bị thật.
 
 Mức độ hoàn thiện hiện tại ước khoảng 90-95% cho phạm vi đồ án. App phù hợp để
@@ -331,8 +334,8 @@ lỗi nhỏ nếu có và chuẩn bị ảnh minh họa cho báo cáo/trình bà
 
 ## Hướng Phát Triển
 
-- Thêm bookmark và ghi chú khi đọc.
-- Thêm lịch sử đọc chi tiết hơn.
+- Thêm ghi chú khi đọc và quản lý bookmark nâng cao.
+- Đồng bộ bookmark/lịch sử đọc lên Firestore.
 - Thêm bình luận/đánh giá theo từng truyện.
 - Tối ưu cache ảnh bìa cho EPUB dung lượng lớn.
 - Thêm App Check cho Firebase nếu đưa vào sử dụng công khai.

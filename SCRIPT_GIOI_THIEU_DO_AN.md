@@ -30,7 +30,8 @@ Mục tiêu chính của vBook là:
 
 Đây là nơi hiển thị các truyện người dùng đã thêm hoặc đã tải về máy.  
 Người dùng có thể xem dạng lưới/danh sách, tìm kiếm truyện, sắp xếp theo tên,
-tiến độ đọc hoặc truyện đọc gần đây.
+tiến độ đọc hoặc truyện đọc gần đây. Màn kệ sách cũng có khu vực lịch sử đọc để
+người dùng mở nhanh các truyện vừa đọc.
 
 ### Khám Phá Truyện
 
@@ -51,6 +52,8 @@ App hỗ trợ:
 - Đọc PDF bằng trình đọc PDF.
 - Đọc TXT bằng màn đọc văn bản.
 - Lưu chương đang đọc và vị trí cuộn.
+- Đánh dấu bookmark chương hoặc vị trí đọc.
+- Mở lại lịch sử đọc và bookmark đã lưu.
 - Tùy chỉnh font, cỡ chữ, nền đọc, khoảng cách dòng.
 - Khi người dùng đọc tới cuối chương, app không tự nhảy chương ngay. Người dùng
   cần vuốt thêm một lần nữa hoặc bấm nút chương tiếp để chuyển chương, giúp việc
@@ -176,13 +179,14 @@ App đã được tối ưu ở một số điểm:
 4. Đọc thử truyện EPUB/PDF.
 5. Tải truyện về máy.
 6. Quay lại Kệ sách, mở truyện offline.
-7. Chỉnh cỡ chữ/theme/cài đặt đọc.
-8. Thử Text-to-Speech.
-9. Đăng ký/đăng nhập tài khoản.
-10. Chỉnh sửa thông tin cá nhân.
-11. Khôi phục mật khẩu bằng email.
-12. Gửi tin nhắn cộng đồng.
-13. Đăng nhập tài khoản admin và kiểm tra mục Quản trị.
+7. Đọc vài đoạn, thêm bookmark và quay lại Kệ sách kiểm tra lịch sử đọc.
+8. Chỉnh cỡ chữ/theme/cài đặt đọc.
+9. Thử Text-to-Speech.
+10. Đăng ký/đăng nhập tài khoản.
+11. Chỉnh sửa thông tin cá nhân.
+12. Khôi phục mật khẩu bằng email.
+13. Gửi tin nhắn cộng đồng.
+14. Đăng nhập tài khoản admin và kiểm tra mục Quản trị.
 
 ## 10. Hạn Chế Hiện Tại
 
@@ -191,7 +195,7 @@ Một số hạn chế còn tồn tại:
 - EPUB dung lượng rất lớn vẫn có thể mất thời gian khi parse nội dung.
 - Google Drive không linh hoạt bằng backend truyện riêng.
 - Chưa có hệ thống bình luận theo từng truyện.
-- Chưa có bookmark/ghi chú nâng cao.
+- Bookmark hiện ở mức cơ bản, chưa có ghi chú riêng cho từng bookmark.
 - APK release hiện phục vụ test đồ án, chưa tối ưu như app phát hành thương mại.
 - Các tác vụ admin hiện phục vụ kiểm tra và demo, chưa phải trang quản trị nội
   dung đầy đủ như sản phẩm thương mại.

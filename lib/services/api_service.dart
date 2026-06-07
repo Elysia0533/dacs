@@ -13,6 +13,7 @@ import 'package:image/image.dart' as img;
 import 'package:xml/xml.dart';
 import '../models/app_user.dart';
 import '../models/community_message.dart';
+import '../models/reading_marker.dart';
 import '../models/story.dart';
 import 'firebase_backend_service.dart';
 import 'google_drive_service.dart';
@@ -48,6 +49,8 @@ class ApiService {
   static const String _authUserKey = 'firebase_auth_user';
   static const String _localAccountsKey = 'local_accounts';
   static const String _localCommunityMessagesKey = 'local_community_messages';
+  static const String _readingHistoryKey = 'reading_history_markers';
+  static const String _readingBookmarksKey = 'reading_bookmarks';
   static final Map<String, Timer> _scrollSaveTimers = {};
   static final Map<String, Future<String?>> _driveCoverTasks = {};
   static final Set<String> _driveCoverMisses = {};
@@ -1019,6 +1022,7 @@ class ApiService {
     await prefs.setStringList(_localStoriesKey, localStoriesJson);
     await _deleteOwnedStoryFiles(removedStories);
     await prefs.remove('scroll_$storyId');
+    await _removeReadingMarkersForStory(storyId);
     await _removeStoryFromBackendLibrary(storyId);
   }
 
@@ -1095,11 +1099,210 @@ class ApiService {
   }
 
   static Future<Story?> getLastReadStory() async {
+    final history = await getReadingHistory();
+    if (history.isNotEmpty) {
+      final stories = await fetchPersonalStories();
+      for (final marker in history) {
+        for (final story in stories) {
+          if (story.id == marker.storyId) return story;
+        }
+      }
+    }
+
     final stories = await fetchPersonalStories();
     if (stories.isEmpty) return null;
     final withProgress = stories.where((s) => s.savedChapterIndex > 0).toList();
     if (withProgress.isNotEmpty) return withProgress.first;
     return stories.first;
+  }
+
+  static Future<List<ReadingMarker>> getReadingHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawMarkers = prefs.getStringList(_readingHistoryKey) ?? [];
+    final markers = rawMarkers
+        .map((raw) {
+          try {
+            return ReadingMarker.fromJson(json.decode(raw));
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<ReadingMarker>()
+        .where((marker) => marker.storyId.isNotEmpty)
+        .toList();
+
+    markers.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return markers;
+  }
+
+  static Future<void> recordReadingHistory(
+    Story story, {
+    int chapterIndex = 0,
+    String chapterTitle = '',
+    double scrollOffset = 0,
+  }) async {
+    if (story.id.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final markers = await getReadingHistory();
+    markers.removeWhere((marker) => marker.storyId == story.id);
+
+    final now = DateTime.now();
+    markers.insert(
+      0,
+      _markerFromStory(
+        story,
+        id: story.id,
+        chapterIndex: chapterIndex,
+        chapterTitle: chapterTitle,
+        scrollOffset: scrollOffset,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    final recentMarkers = markers.take(30).toList();
+    await prefs.setStringList(
+      _readingHistoryKey,
+      recentMarkers.map((marker) => json.encode(marker.toJson())).toList(),
+    );
+  }
+
+  static Future<List<ReadingMarker>> getReadingBookmarks({
+    String? storyId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawMarkers = prefs.getStringList(_readingBookmarksKey) ?? [];
+    final markers = rawMarkers
+        .map((raw) {
+          try {
+            return ReadingMarker.fromJson(json.decode(raw));
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<ReadingMarker>()
+        .where((marker) => marker.storyId.isNotEmpty)
+        .where((marker) => storyId == null || marker.storyId == storyId)
+        .toList();
+
+    markers.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return markers;
+  }
+
+  static Future<bool> isBookmarked(
+    String storyId, {
+    int chapterIndex = 0,
+  }) async {
+    final bookmarks = await getReadingBookmarks(storyId: storyId);
+    return bookmarks.any((marker) => marker.chapterIndex == chapterIndex);
+  }
+
+  static Future<bool> toggleBookmark(
+    Story story, {
+    int chapterIndex = 0,
+    String chapterTitle = '',
+    double scrollOffset = 0,
+  }) async {
+    if (story.id.isEmpty) return false;
+
+    final prefs = await SharedPreferences.getInstance();
+    final bookmarks = await getReadingBookmarks();
+    final existingIndex = bookmarks.indexWhere(
+      (marker) =>
+          marker.storyId == story.id && marker.chapterIndex == chapterIndex,
+    );
+
+    if (existingIndex != -1) {
+      bookmarks.removeAt(existingIndex);
+      await prefs.setStringList(
+        _readingBookmarksKey,
+        bookmarks.map((marker) => json.encode(marker.toJson())).toList(),
+      );
+      return false;
+    }
+
+    final now = DateTime.now();
+    bookmarks.insert(
+      0,
+      _markerFromStory(
+        story,
+        id: const Uuid().v4(),
+        chapterIndex: chapterIndex,
+        chapterTitle: chapterTitle,
+        scrollOffset: scrollOffset,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    await prefs.setStringList(
+      _readingBookmarksKey,
+      bookmarks
+          .take(100)
+          .map((marker) => json.encode(marker.toJson()))
+          .toList(),
+    );
+    return true;
+  }
+
+  static Future<void> removeBookmark(String bookmarkId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final bookmarks = await getReadingBookmarks();
+    bookmarks.removeWhere((marker) => marker.id == bookmarkId);
+    await prefs.setStringList(
+      _readingBookmarksKey,
+      bookmarks.map((marker) => json.encode(marker.toJson())).toList(),
+    );
+  }
+
+  static Future<void> _removeReadingMarkersForStory(String storyId) async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in [_readingHistoryKey, _readingBookmarksKey]) {
+      final rawMarkers = prefs.getStringList(key) ?? [];
+      final markers = rawMarkers
+          .map((raw) {
+            try {
+              return ReadingMarker.fromJson(json.decode(raw));
+            } catch (_) {
+              return null;
+            }
+          })
+          .whereType<ReadingMarker>()
+          .where((marker) => marker.storyId != storyId)
+          .toList();
+      await prefs.setStringList(
+        key,
+        markers.map((marker) => json.encode(marker.toJson())).toList(),
+      );
+    }
+  }
+
+  static ReadingMarker _markerFromStory(
+    Story story, {
+    required String id,
+    required int chapterIndex,
+    required String chapterTitle,
+    required double scrollOffset,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) {
+    return ReadingMarker(
+      id: id,
+      storyId: story.id,
+      storyTitle: story.title,
+      chapterTitle: chapterTitle.isNotEmpty
+          ? chapterTitle
+          : 'Chương ${chapterIndex + 1}',
+      iconUrl: story.iconUrl,
+      driveFileId: story.driveFileId,
+      fileType: story.fileType,
+      localPath: story.localPath,
+      chapterIndex: chapterIndex,
+      scrollOffset: scrollOffset,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
   }
 
   static Future<void> saveChapterProgress(

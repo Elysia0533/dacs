@@ -6,6 +6,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import '../models/story.dart';
+import '../models/reading_marker.dart';
 import '../services/api_service.dart';
 import '../theme/reading_settings_provider.dart';
 
@@ -32,6 +33,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   bool _showBars = true;
   bool _waitingForExtraSwipeAtEnd = false;
   bool _isAdvancingFromEndSwipe = false;
+  bool _isCurrentBookmarked = false;
   double _endOverscrollDistance = 0;
 
   static const double _chapterEndThreshold = 12;
@@ -108,6 +110,8 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         _chapters = flat;
         _isLoading = false;
       });
+      await _recordCurrentHistory();
+      await _refreshBookmarkState();
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -225,6 +229,8 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
       index,
       totalChapters: _chapters.length,
     );
+    await _recordCurrentHistory();
+    await _refreshBookmarkState();
     if (smooth) {
       await _scrollController.animateTo(
         0,
@@ -234,6 +240,69 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     } else {
       _scrollController.jumpTo(0);
     }
+  }
+
+  Future<void> _recordCurrentHistory() {
+    if (_chapters.isEmpty) return Future.value();
+    return ApiService.recordReadingHistory(
+      widget.story,
+      chapterIndex: _currentIndex,
+      chapterTitle: _chapters[_currentIndex].title,
+      scrollOffset: _scrollController.hasClients ? _scrollController.offset : 0,
+    );
+  }
+
+  Future<void> _refreshBookmarkState() async {
+    final bookmarked = await ApiService.isBookmarked(
+      widget.story.id,
+      chapterIndex: _currentIndex,
+    );
+    if (!mounted) return;
+    setState(() => _isCurrentBookmarked = bookmarked);
+  }
+
+  Future<void> _toggleBookmark() async {
+    if (_chapters.isEmpty) return;
+    final added = await ApiService.toggleBookmark(
+      widget.story,
+      chapterIndex: _currentIndex,
+      chapterTitle: _chapters[_currentIndex].title,
+      scrollOffset: _scrollController.hasClients ? _scrollController.offset : 0,
+    );
+    if (!mounted) return;
+    setState(() => _isCurrentBookmarked = added);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(added ? 'Đã thêm bookmark' : 'Đã bỏ bookmark'),
+        duration: const Duration(milliseconds: 1100),
+      ),
+    );
+  }
+
+  Future<void> _showBookmarks() async {
+    final bookmarks = await ApiService.getReadingBookmarks(
+      storyId: widget.story.id,
+    );
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BookmarksSheet(
+        bookmarks: bookmarks,
+        onSelect: (marker) {
+          Navigator.pop(context);
+          _goToChapter(marker.chapterIndex);
+        },
+        onRemove: (marker) async {
+          await ApiService.removeBookmark(marker.id);
+          await _refreshBookmarkState();
+          if (!mounted) return;
+          Navigator.pop(context);
+          _showBookmarks();
+        },
+      ),
+    );
   }
 
   Future<void> _toggleTts() async {
@@ -480,6 +549,28 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                           ),
                           IconButton(
                             icon: Icon(
+                              _isCurrentBookmarked
+                                  ? Icons.bookmark_rounded
+                                  : Icons.bookmark_border_rounded,
+                              color: _isCurrentBookmarked
+                                  ? Theme.of(context).primaryColor
+                                  : settings.textColor,
+                            ),
+                            tooltip: _isCurrentBookmarked
+                                ? 'Bỏ bookmark'
+                                : 'Thêm bookmark',
+                            onPressed: _toggleBookmark,
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              Icons.bookmarks_outlined,
+                              color: settings.textColor,
+                            ),
+                            tooltip: 'Danh sách bookmark',
+                            onPressed: _showBookmarks,
+                          ),
+                          IconButton(
+                            icon: Icon(
                               Icons.text_fields_rounded,
                               color: settings.textColor,
                             ),
@@ -564,6 +655,19 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                                           fontSize: 12,
                                           color: settings.textColor.withValues(
                                             alpha: 0.6,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        _currentIndex < _chapters.length - 1
+                                            ? 'Cuối chương: vuốt thêm để sang chương tiếp'
+                                            : 'Chương cuối',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: settings.textColor.withValues(
+                                            alpha: 0.42,
                                           ),
                                         ),
                                       ),
@@ -669,6 +773,135 @@ class _ReaderAudioBar extends StatelessWidget {
               color: textColor.withValues(alpha: 0.72),
             ),
             const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BookmarksSheet extends StatelessWidget {
+  final List<ReadingMarker> bookmarks;
+  final ValueChanged<ReadingMarker> onSelect;
+  final ValueChanged<ReadingMarker> onRemove;
+
+  const _BookmarksSheet({
+    required this.bookmarks,
+    required this.onSelect,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final bg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 420),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10, bottom: 14),
+              decoration: BoxDecoration(
+                color: colorScheme.outline.withValues(alpha: 0.38),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Bookmark',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${bookmarks.length}',
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (bookmarks.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.bookmark_border_rounded,
+                      size: 44,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Chưa có bookmark cho truyện này',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: 12),
+                  itemCount: bookmarks.length,
+                  separatorBuilder: (_, _) => Divider(
+                    height: 1,
+                    color: colorScheme.outline.withValues(alpha: 0.12),
+                  ),
+                  itemBuilder: (context, index) {
+                    final marker = bookmarks[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: colorScheme.primary.withValues(
+                          alpha: 0.12,
+                        ),
+                        child: Icon(
+                          Icons.bookmark_rounded,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      title: Text(
+                        marker.chapterTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        'Chương ${marker.chapterIndex + 1}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () => onSelect(marker),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        tooltip: 'Xóa bookmark',
+                        onPressed: () => onRemove(marker),
+                      ),
+                    );
+                  },
+                ),
+              ),
           ],
         ),
       ),

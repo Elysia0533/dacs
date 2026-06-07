@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'dart:async';
 import '../models/story.dart';
+import '../models/reading_marker.dart';
 import '../services/api_service.dart';
 import '../theme/reading_settings_provider.dart';
 
@@ -17,9 +19,11 @@ class ReadingScreen extends StatefulWidget {
 class _ReadingScreenState extends State<ReadingScreen> {
   bool _showEnglish = false;
   bool _showToolbar = false;
+  bool _isBookmarked = false;
 
   final ScrollController _scrollController = ScrollController();
   double _scrollProgress = 0.0;
+  Timer? _historySaveTimer;
 
   final FlutterTts _tts = FlutterTts();
   bool _isSpeaking = false;
@@ -30,7 +34,9 @@ class _ReadingScreenState extends State<ReadingScreen> {
     super.initState();
     _initTts();
     _restoreScrollPosition();
+    _loadBookmarkState();
     _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recordHistory());
   }
 
   Future<void> _initTts() async {
@@ -84,6 +90,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
       setState(() => _scrollProgress = current / max);
     }
     ApiService.saveScrollOffset(widget.story.id, current);
+    _scheduleHistorySave(current);
   }
 
   String get _currentContent =>
@@ -116,6 +123,78 @@ class _ReadingScreenState extends State<ReadingScreen> {
     });
   }
 
+  Future<void> _loadBookmarkState() async {
+    final bookmarked = await ApiService.isBookmarked(widget.story.id);
+    if (!mounted) return;
+    setState(() => _isBookmarked = bookmarked);
+  }
+
+  void _scheduleHistorySave(double offset) {
+    _historySaveTimer?.cancel();
+    _historySaveTimer = Timer(
+      const Duration(milliseconds: 700),
+      () => _recordHistory(offset: offset),
+    );
+  }
+
+  Future<void> _recordHistory({double? offset}) {
+    return ApiService.recordReadingHistory(
+      widget.story,
+      chapterTitle: 'Vị trí ${(_scrollProgress * 100).round()}%',
+      scrollOffset:
+          offset ??
+          (_scrollController.hasClients ? _scrollController.offset : 0),
+    );
+  }
+
+  Future<void> _toggleBookmark() async {
+    final added = await ApiService.toggleBookmark(
+      widget.story,
+      chapterTitle: 'Vị trí ${(_scrollProgress * 100).round()}%',
+      scrollOffset: _scrollController.hasClients ? _scrollController.offset : 0,
+    );
+    if (!mounted) return;
+    setState(() => _isBookmarked = added);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(added ? 'Đã thêm bookmark' : 'Đã bỏ bookmark'),
+        duration: const Duration(milliseconds: 1100),
+      ),
+    );
+  }
+
+  Future<void> _showBookmarks() async {
+    final bookmarks = await ApiService.getReadingBookmarks(
+      storyId: widget.story.id,
+    );
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _TextBookmarksSheet(
+        bookmarks: bookmarks,
+        onSelect: (marker) {
+          Navigator.pop(context);
+          if (!_scrollController.hasClients) return;
+          _scrollController.jumpTo(
+            marker.scrollOffset.clamp(
+              0.0,
+              _scrollController.position.maxScrollExtent,
+            ),
+          );
+        },
+        onRemove: (marker) async {
+          await ApiService.removeBookmark(marker.id);
+          await _loadBookmarkState();
+          if (!mounted) return;
+          Navigator.pop(context);
+          _showBookmarks();
+        },
+      ),
+    );
+  }
+
   void _showSettings() {
     showModalBottomSheet(
       context: context,
@@ -127,6 +206,10 @@ class _ReadingScreenState extends State<ReadingScreen> {
 
   @override
   void dispose() {
+    _historySaveTimer?.cancel();
+    if (_scrollController.hasClients) {
+      _recordHistory(offset: _scrollController.offset);
+    }
     _tts.stop();
     _scrollController.dispose();
     super.dispose();
@@ -235,6 +318,28 @@ class _ReadingScreenState extends State<ReadingScreen> {
                               onPressed: () =>
                                   setState(() => _showEnglish = !_showEnglish),
                             ),
+                          IconButton(
+                            icon: Icon(
+                              _isBookmarked
+                                  ? Icons.bookmark_rounded
+                                  : Icons.bookmark_border_rounded,
+                              color: _isBookmarked
+                                  ? Theme.of(context).primaryColor
+                                  : settings.textColor,
+                            ),
+                            tooltip: _isBookmarked
+                                ? 'Bỏ bookmark'
+                                : 'Thêm bookmark',
+                            onPressed: _toggleBookmark,
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              Icons.bookmarks_outlined,
+                              color: settings.textColor,
+                            ),
+                            tooltip: 'Danh sách bookmark',
+                            onPressed: _showBookmarks,
+                          ),
                           IconButton(
                             icon: Icon(
                               Icons.text_fields_rounded,
@@ -401,6 +506,135 @@ class _ReaderAudioBar extends StatelessWidget {
               color: textColor.withValues(alpha: 0.72),
             ),
             const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TextBookmarksSheet extends StatelessWidget {
+  final List<ReadingMarker> bookmarks;
+  final ValueChanged<ReadingMarker> onSelect;
+  final ValueChanged<ReadingMarker> onRemove;
+
+  const _TextBookmarksSheet({
+    required this.bookmarks,
+    required this.onSelect,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final bg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 380),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10, bottom: 14),
+              decoration: BoxDecoration(
+                color: colorScheme.outline.withValues(alpha: 0.38),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Bookmark',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${bookmarks.length}',
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (bookmarks.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.bookmark_border_rounded,
+                      size: 44,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Chưa có bookmark cho truyện này',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: 12),
+                  itemCount: bookmarks.length,
+                  separatorBuilder: (_, _) => Divider(
+                    height: 1,
+                    color: colorScheme.outline.withValues(alpha: 0.12),
+                  ),
+                  itemBuilder: (context, index) {
+                    final marker = bookmarks[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: colorScheme.primary.withValues(
+                          alpha: 0.12,
+                        ),
+                        child: Icon(
+                          Icons.bookmark_rounded,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      title: Text(
+                        marker.chapterTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        'Vị trí đã lưu',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () => onSelect(marker),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        tooltip: 'Xóa bookmark',
+                        onPressed: () => onRemove(marker),
+                      ),
+                    );
+                  },
+                ),
+              ),
           ],
         ),
       ),

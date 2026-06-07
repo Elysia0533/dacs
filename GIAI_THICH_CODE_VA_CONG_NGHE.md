@@ -128,6 +128,20 @@ Công nghệ dùng:
 - Dart model.
 - Firestore document mapping.
 
+### `lib/models/reading_marker.dart`
+
+Mục đích:
+
+- Model dùng chung cho lịch sử đọc và bookmark.
+- Lưu storyId, tên truyện, chương/vị trí đọc, ảnh bìa, fileType, localPath,
+  scrollOffset và thời gian cập nhật.
+
+Khi được hỏi:
+
+> Em tách bookmark/lịch sử thành `ReadingMarker` để không phải nhét thêm quá
+> nhiều trường vào `Story`. Một truyện có thể xuất hiện trong lịch sử và cũng có
+> nhiều bookmark theo chương hoặc vị trí đọc.
+
 ## 4. Nhóm Services
 
 ### `lib/services/api_service.dart`
@@ -141,6 +155,7 @@ Mục đích:
 - Trích xuất metadata EPUB: title, author, description, số chương, ảnh bìa.
 - Cache danh sách truyện Drive và ảnh bìa.
 - Tự phục hồi ảnh bìa EPUB local nếu đường dẫn cũ bị mất.
+- Lưu lịch sử đọc và bookmark bằng SharedPreferences.
 
 Công nghệ dùng:
 
@@ -252,6 +267,7 @@ Mục đích:
 - Màn Kệ sách cá nhân.
 - Hiển thị truyện đã thêm/tải.
 - Tìm kiếm, sắp xếp, đổi layout lưới/danh sách.
+- Hiển thị lịch sử đọc gần đây.
 - Import truyện từ máy.
 - Mở chi tiết truyện.
 
@@ -309,6 +325,7 @@ Mục đích:
 - Tích hợp Text-to-Speech.
 - Kiểm soát chuyển chương ở cuối nội dung: app chỉ chuyển sang chương tiếp khi
   người dùng đã chạm cuối chương và vuốt thêm một lần nữa.
+- Cho phép thêm/bỏ bookmark theo chương và mở danh sách bookmark.
 
 Công nghệ dùng:
 
@@ -360,6 +377,8 @@ Mục đích:
 
 - Màn đọc TXT hoặc nội dung text.
 - Hiển thị nội dung với cài đặt đọc.
+- Lưu vị trí cuộn vào lịch sử đọc.
+- Cho phép bookmark vị trí đang đọc.
 
 ### `lib/screens/community_screen.dart`
 
@@ -695,6 +714,7 @@ Nên nhấn mạnh:
 - Có Firebase Auth và Firestore.
 - Có cộng đồng.
 - Có khôi phục mật khẩu, chỉnh sửa thông tin cá nhân và tác vụ admin.
+- Có bookmark và lịch sử đọc gần đây.
 - Có TTS.
 - Có xử lý ảnh bìa EPUB tương đối kỹ.
 - Có tối ưu tải Drive bằng stream và cache.

@@ -210,6 +210,14 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
       (_storyFileType == 'epub' || _storyFileType == 'pdf');
 
   void _startReading() {
+    ApiService.recordReadingHistory(
+      _story,
+      chapterIndex: _story.savedChapterIndex,
+      chapterTitle: _story.savedChapterIndex > 0
+          ? 'Chương ${_story.savedChapterIndex + 1}'
+          : 'Bắt đầu đọc',
+    );
+
     final localPath = _story.localPath;
     if (localPath.isEmpty) {
       if (_story.isFromDrive && _story.driveFileId.isNotEmpty) {

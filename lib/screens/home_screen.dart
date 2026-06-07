@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
 import '../models/story.dart';
+import '../models/reading_marker.dart';
 import '../services/api_service.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/story_cover_image.dart';
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget?> _lazyTabs = List<Widget?>.filled(4, null);
   List<Story> _personalStories = [];
   List<Story> _filteredStories = [];
+  List<ReadingMarker> _readingHistory = [];
   bool _isLoading = true;
 
   bool _isGridView = true;
@@ -55,6 +57,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadStories() async {
     setState(() => _isLoading = true);
     _personalStories = await ApiService.fetchPersonalStories();
+    _readingHistory = await ApiService.getReadingHistory();
+    _readingHistory = _readingHistory
+        .where((marker) => _storyForMarker(marker) != null)
+        .toList();
     _lastReadStory = await ApiService.getLastReadStory();
     _applySearch();
     setState(() => _isLoading = false);
@@ -487,6 +493,121 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Story? _storyForMarker(ReadingMarker marker) {
+    for (final story in _personalStories) {
+      if (story.id == marker.storyId) return story;
+    }
+    return null;
+  }
+
+  Widget _buildHistoryStrip(bool isDark) {
+    if (_readingHistory.isEmpty) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
+    final markers = _readingHistory.take(8).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              Icon(Icons.history_rounded, size: 18, color: colorScheme.primary),
+              const SizedBox(width: 6),
+              const Text(
+                'Lịch sử đọc',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 124,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: markers.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final marker = markers[index];
+              final story = _storyForMarker(marker);
+              if (story == null) return const SizedBox.shrink();
+
+              return InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _openStory(story),
+                child: SizedBox(
+                  width: 86,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            StoryCoverImage(
+                              imagePath: story.iconUrl,
+                              driveFileId: story.driveFileId,
+                              fileType: story.fileType,
+                              width: double.infinity,
+                              height: double.infinity,
+                              borderRadius: BorderRadius.circular(8),
+                              backgroundColor: isDark
+                                  ? const Color(0xFF222624)
+                                  : Colors.grey.shade200,
+                            ),
+                            Positioned(
+                              left: 5,
+                              right: 5,
+                              bottom: 5,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.72),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 3,
+                                  ),
+                                  child: Text(
+                                    marker.chapterTitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        story.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colorScheme.onSurface,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildStoryCard(Story story, bool isDark) {
     final colorScheme = Theme.of(context).colorScheme;
     final progressLabel = _getProgressLabel(story);
@@ -673,9 +794,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       children: [
         _buildLastReadBanner(isDark),
+        _buildHistoryStrip(isDark),
 
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            _readingHistory.isEmpty ? 16 : 10,
+            16,
+            8,
+          ),
           child: Row(
             children: [
               Expanded(
