@@ -465,16 +465,29 @@ class GoogleDriveService {
     final isMedia =
         trimmed.contains('www.googleapis.com/drive/v3/files') &&
         trimmed.contains('alt=media');
-    final directUrl = apiKey.isEmpty ? '' : getCoverImageUrl(fileId);
+    final directUrl = getCoverImageUrl(fileId);
+    final userContentUrl = getUserContentDownloadUrl(fileId);
+    final apiMediaUrl = apiKey.isEmpty ? '' : getApiDownloadUrl(fileId);
     final thumbnailUrl = getThumbnailUrl(fileId);
 
     if (isMedia) {
-      return _uniqueNonEmpty([trimmed, thumbnailUrl]);
+      return _uniqueNonEmpty([
+        directUrl,
+        userContentUrl,
+        thumbnailUrl,
+        trimmed,
+      ]);
     }
     if (isThumbnail) {
-      return _uniqueNonEmpty([trimmed, directUrl]);
+      return _uniqueNonEmpty([trimmed, directUrl, userContentUrl, apiMediaUrl]);
     }
-    return _uniqueNonEmpty([directUrl, thumbnailUrl, trimmed]);
+    return _uniqueNonEmpty([
+      directUrl,
+      userContentUrl,
+      thumbnailUrl,
+      apiMediaUrl,
+      trimmed,
+    ]);
   }
 
   static String? extractFileId(String value) {
@@ -506,6 +519,14 @@ class GoogleDriveService {
   }
 
   static String getDownloadUrl(String fileId) {
+    return 'https://drive.google.com/uc?export=download&id=$fileId';
+  }
+
+  static String getUserContentDownloadUrl(String fileId) {
+    return 'https://drive.usercontent.google.com/download?id=$fileId&export=download&authuser=0';
+  }
+
+  static String getApiDownloadUrl(String fileId) {
     return 'https://www.googleapis.com/drive/v3/files/$fileId?alt=media&key=$apiKey';
   }
 
@@ -523,8 +544,30 @@ class GoogleDriveService {
   }) async {
     _ensureApiKey();
 
-    final request = http.Request('GET', Uri.parse(getDownloadUrl(fileId)));
-    final response = await request.send().timeout(const Duration(seconds: 20));
+    final urls = _uniqueNonEmpty([
+      getApiDownloadUrl(fileId),
+      getDownloadUrl(fileId),
+      getUserContentDownloadUrl(fileId),
+    ]);
+    Object? lastError;
+
+    for (final url in urls) {
+      try {
+        return await _downloadBytesFromUrl(url, onProgress: onProgress);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw Exception('Loi khi tai file tu Drive: $lastError');
+  }
+
+  static Future<Uint8List> _downloadBytesFromUrl(
+    String url, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+  }) async {
+    final request = http.Request('GET', Uri.parse(url));
+    final response = await request.send().timeout(const Duration(seconds: 25));
 
     if (response.statusCode == 200) {
       final chunks = <int>[];
@@ -537,11 +580,25 @@ class GoogleDriveService {
         onProgress?.call(receivedBytes, totalBytes);
       }
 
-      return Uint8List.fromList(chunks);
+      final bytes = Uint8List.fromList(chunks);
+      if (_looksLikeHtml(bytes)) {
+        throw Exception('Drive tra ve trang HTML thay vi noi dung file.');
+      }
+      return bytes;
     }
 
     final errorBody = await response.stream.bytesToString();
     throw Exception('Lỗi khi tải file từ Drive: $errorBody');
+  }
+
+  static bool _looksLikeHtml(Uint8List bytes) {
+    if (bytes.isEmpty) return false;
+    final sampleLength = bytes.length < 512 ? bytes.length : 512;
+    final sample = utf8
+        .decode(bytes.sublist(0, sampleLength), allowMalformed: true)
+        .trimLeft()
+        .toLowerCase();
+    return sample.startsWith('<!doctype html') || sample.startsWith('<html');
   }
 }
 
