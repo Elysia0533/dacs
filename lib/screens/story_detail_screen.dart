@@ -3,6 +3,7 @@ import 'dart:io';
 import '../models/story.dart';
 import '../services/api_service.dart';
 import '../services/google_drive_service.dart';
+import '../utils/file_name_utils.dart';
 import 'package:path_provider/path_provider.dart';
 import 'chapter_reader_screen.dart';
 import 'epub_reader_screen.dart';
@@ -59,9 +60,16 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     });
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final safeTitle = _safeFileName(_story.title);
-      final guessedExt = _storyFileType.isEmpty ? 'epub' : _storyFileType;
-      var file = File('${dir.path}/$safeTitle.$guessedExt');
+      final uniqueId = _story.driveFileId.isNotEmpty
+          ? _story.driveFileId
+          : _story.id;
+      final guessedExt = FileNameUtils.normalizeExtension(_storyFileType);
+      final storageName = FileNameUtils.storageFileName(
+        title: _story.title,
+        uniqueId: uniqueId,
+        extension: guessedExt,
+      );
+      var file = File('${dir.path}/$storageName');
       file = await GoogleDriveService.downloadFileToFile(
         _story.driveFileId,
         file,
@@ -79,7 +87,12 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
 
       final ext = await _detectFileType(file);
       if (!file.path.toLowerCase().endsWith('.$ext')) {
-        final renamedFile = File('${dir.path}/$safeTitle.$ext');
+        final correctedName = FileNameUtils.storageFileName(
+          title: _story.title,
+          uniqueId: uniqueId,
+          extension: ext,
+        );
+        final renamedFile = File('${dir.path}/$correctedName');
         if (await renamedFile.exists()) {
           await renamedFile.delete();
         }
@@ -161,11 +174,6 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
     if (progress == null) return 'Đang tải...';
     final percent = (progress.clamp(0.0, 1.0) * 100).round();
     return 'Đang tải $percent%';
-  }
-
-  String _safeFileName(String value) {
-    final safe = value.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
-    return safe.isEmpty ? 'story_${_story.driveFileId}' : safe;
   }
 
   Future<String> _detectFileType(File file) async {

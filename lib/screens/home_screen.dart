@@ -9,6 +9,7 @@ import '../models/story.dart';
 import '../models/reading_marker.dart';
 import '../services/api_service.dart';
 import '../theme/theme_provider.dart';
+import '../utils/file_name_utils.dart';
 import '../widgets/story_cover_image.dart';
 import 'story_detail_screen.dart';
 import 'explore_screen.dart';
@@ -274,30 +275,42 @@ class _HomeScreenState extends State<HomeScreen> {
     if (result != null && result.files.single.path != null) {
       final srcPath = result.files.single.path!;
       final fileName = result.files.single.name;
-      final extension = result.files.single.extension ?? '';
+      final rawExtension =
+          result.files.single.extension ??
+          (fileName.contains('.') ? fileName.split('.').last : '');
+      final extension = FileNameUtils.normalizeExtension(
+        rawExtension,
+        fallback: 'txt',
+      );
+      final titleFromFileName = fileName.replaceAll(
+        RegExp(r'\.(epub|pdf|txt)$', caseSensitive: false),
+        '',
+      );
 
       String savedPath = srcPath;
       try {
         final appDir = await getApplicationDocumentsDirectory();
         final uuid = const Uuid().v4();
-        final destFile = File('${appDir.path}/${uuid}_$fileName');
+        final storageName = FileNameUtils.storageFileName(
+          title: titleFromFileName,
+          uniqueId: uuid,
+          extension: extension,
+        );
+        final destFile = File('${appDir.path}/$storageName');
         await File(srcPath).copy(destFile.path);
         savedPath = destFile.path;
       } catch (_) {
         savedPath = srcPath;
       }
 
-      String displayTitle = fileName.replaceAll(
-        RegExp(r'\.(epub|pdf|txt)$', caseSensitive: false),
-        '',
-      );
+      String displayTitle = titleFromFileName;
       String coverPath = '';
       String description = '';
       String author = '';
       List<String> genres = [];
       int totalChapters = 1;
 
-      if (extension.toLowerCase() == 'epub') {
+      if (extension == 'epub') {
         try {
           final metadata = await ApiService.extractEpubMetadata(savedPath);
           if (metadata['title'] != null && metadata['title']!.isNotEmpty) {
@@ -340,7 +353,7 @@ class _HomeScreenState extends State<HomeScreen> {
         fileType: extension.toLowerCase(),
       );
 
-      if (extension.toLowerCase() == 'txt') {
+      if (extension == 'txt') {
         newStory = Story(
           id: newStory.id,
           title: displayTitle,
