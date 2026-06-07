@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import 'package:epub_view/epub_view.dart';
 import 'package:epubx/epubx.dart' as epubx;
 import 'package:image/image.dart' as img;
+import 'package:xml/xml.dart';
 import '../models/app_user.dart';
 import '../models/community_message.dart';
 import '../models/story.dart';
@@ -81,15 +83,10 @@ class ApiService {
 
       String coverPath = '';
       try {
-        final document = await EpubDocument.openData(bytes);
-        if (document.CoverImage != null) {
-          final directory = await getApplicationDocumentsDirectory();
-          final coverFileName = 'cover_${const Uuid().v4()}.jpg';
-          final coverFile = File('${directory.path}/$coverFileName');
-          final jpgBytes = img.encodeJpg(document.CoverImage!);
-          await coverFile.writeAsBytes(jpgBytes);
-          coverPath = coverFile.path;
-        }
+        final directory = await getApplicationDocumentsDirectory();
+        final coverFileName = 'cover_${const Uuid().v4()}.jpg';
+        final coverFile = File('${directory.path}/$coverFileName');
+        coverPath = await _writeEpubCover(bytes, coverFile);
       } catch (_) {}
 
       return {
@@ -127,16 +124,12 @@ class ApiService {
     return _driveCoverTasks.putIfAbsent(id, () async {
       try {
         final bytes = await GoogleDriveService.downloadFileBytes(id);
-        final document = await EpubDocument.openData(bytes);
-        final coverImage = document.CoverImage;
-        if (coverImage == null) {
+        final savedPath = await _writeEpubCover(bytes, coverFile);
+        if (savedPath.isEmpty) {
           _driveCoverMisses.add(id);
           return null;
         }
-
-        final jpgBytes = img.encodeJpg(coverImage, quality: 88);
-        await coverFile.writeAsBytes(jpgBytes, flush: true);
-        return coverFile.path;
+        return savedPath;
       } catch (e) {
         debugPrint('Khong the trich bia EPUB tu Drive: $e');
         _driveCoverMisses.add(id);
@@ -145,6 +138,257 @@ class ApiService {
         _driveCoverTasks.remove(id);
       }
     });
+  }
+
+  static Future<String> _writeEpubCover(
+    Uint8List bytes,
+    File outputFile,
+  ) async {
+    final coverBytes = await _extractEpubCoverJpgBytes(bytes);
+    if (coverBytes == null || coverBytes.isEmpty) return '';
+
+    await outputFile.parent.create(recursive: true);
+    await outputFile.writeAsBytes(coverBytes, flush: true);
+    return outputFile.path;
+  }
+
+  static Future<Uint8List?> _extractEpubCoverJpgBytes(Uint8List bytes) async {
+    try {
+      final document = await EpubDocument.openData(bytes);
+      final coverImage = document.CoverImage;
+      if (coverImage != null) {
+        return Uint8List.fromList(img.encodeJpg(coverImage, quality: 88));
+      }
+    } catch (_) {}
+
+    final rawCoverBytes = _extractEpubCoverBytesFromArchive(bytes);
+    if (rawCoverBytes == null || rawCoverBytes.isEmpty) return null;
+
+    final decodedImage = img.decodeImage(rawCoverBytes);
+    if (decodedImage == null) return null;
+    return Uint8List.fromList(img.encodeJpg(decodedImage, quality: 88));
+  }
+
+  static Uint8List? _extractEpubCoverBytesFromArchive(Uint8List bytes) {
+    try {
+      final archive = ZipDecoder().decodeBytes(bytes, verify: false);
+      final containerFile = _findArchiveFile(archive, 'META-INF/container.xml');
+      String? opfPath;
+
+      if (containerFile != null) {
+        final containerText = _archiveFileText(containerFile);
+        final containerDocument = XmlDocument.parse(containerText);
+        for (final rootFile in containerDocument.findAllElements('rootfile')) {
+          final fullPath = rootFile.getAttribute('full-path')?.trim();
+          if (fullPath != null && fullPath.isNotEmpty) {
+            opfPath = _normalizeZipPath(fullPath);
+            break;
+          }
+        }
+      }
+
+      opfPath ??= archive.files
+          .map((file) => _normalizeZipPath(file.name))
+          .firstWhere(
+            (name) => name.toLowerCase().endsWith('.opf'),
+            orElse: () => '',
+          );
+      if (opfPath.isEmpty) return null;
+
+      final opfFile = _findArchiveFile(archive, opfPath);
+      if (opfFile == null) return null;
+
+      final opfText = _archiveFileText(opfFile);
+      final opfDocument = XmlDocument.parse(opfText);
+      final opfBasePath = _zipDirName(opfPath);
+      final manifestItems = opfDocument.findAllElements('item').toList();
+      final coverCandidates = <String>[];
+
+      String? coverId;
+      for (final meta in opfDocument.findAllElements('meta')) {
+        final name = meta.getAttribute('name')?.trim().toLowerCase();
+        if (name == 'cover') {
+          coverId = meta.getAttribute('content')?.trim();
+          break;
+        }
+      }
+
+      if (coverId != null && coverId.isNotEmpty) {
+        final coverItem = manifestItems.cast<XmlElement?>().firstWhere(
+          (item) => item?.getAttribute('id') == coverId,
+          orElse: () => null,
+        );
+        _addManifestCoverCandidate(coverCandidates, opfBasePath, coverItem);
+      }
+
+      for (final item in manifestItems) {
+        final properties = item.getAttribute('properties') ?? '';
+        if (properties.split(RegExp(r'\s+')).contains('cover-image')) {
+          _addManifestCoverCandidate(coverCandidates, opfBasePath, item);
+        }
+      }
+
+      for (final item in manifestItems) {
+        final href = item.getAttribute('href') ?? '';
+        final mediaType = item.getAttribute('media-type') ?? '';
+        if (_looksLikeCoverImage(href, mediaType)) {
+          _addManifestCoverCandidate(coverCandidates, opfBasePath, item);
+        }
+      }
+
+      for (final item in manifestItems) {
+        final href = item.getAttribute('href') ?? '';
+        final mediaType = item.getAttribute('media-type') ?? '';
+        if (mediaType.contains('xhtml') &&
+            href.toLowerCase().contains('cover')) {
+          final coverPagePath = _resolveZipPath(opfBasePath, href);
+          final imagePath = _readCoverImagePathFromXhtml(
+            archive,
+            coverPagePath,
+          );
+          if (imagePath != null) coverCandidates.add(imagePath);
+        }
+      }
+
+      for (final item in manifestItems) {
+        final href = item.getAttribute('href') ?? '';
+        final mediaType = item.getAttribute('media-type') ?? '';
+        if (_isImageManifestItem(href, mediaType)) {
+          _addManifestCoverCandidate(coverCandidates, opfBasePath, item);
+        }
+      }
+
+      final seen = <String>{};
+      for (final candidate in coverCandidates) {
+        final normalized = _normalizeZipPath(candidate);
+        if (normalized.isEmpty || !seen.add(normalized)) continue;
+        final file = _findArchiveFile(archive, normalized);
+        if (file == null || file.isFile == false || file.size <= 0) continue;
+        return Uint8List.fromList(file.content as List<int>);
+      }
+    } catch (e) {
+      debugPrint('Khong the doc cover EPUB thu cong: $e');
+    }
+
+    return null;
+  }
+
+  static void _addManifestCoverCandidate(
+    List<String> candidates,
+    String opfBasePath,
+    XmlElement? item,
+  ) {
+    final href = item?.getAttribute('href')?.trim();
+    if (href == null || href.isEmpty) return;
+    candidates.add(_resolveZipPath(opfBasePath, href));
+  }
+
+  static String? _readCoverImagePathFromXhtml(
+    Archive archive,
+    String xhtmlPath,
+  ) {
+    final xhtmlFile = _findArchiveFile(archive, xhtmlPath);
+    if (xhtmlFile == null) return null;
+
+    try {
+      final document = XmlDocument.parse(_archiveFileText(xhtmlFile));
+      for (final image in document.findAllElements('img')) {
+        final src = image.getAttribute('src')?.trim();
+        if (src != null && src.isNotEmpty) {
+          return _resolveZipPath(_zipDirName(xhtmlPath), src);
+        }
+      }
+      for (final image in document.findAllElements('image')) {
+        final src =
+            image.getAttribute('href') ??
+            image.getAttribute('xlink:href') ??
+            image.getAttribute('src');
+        if (src != null && src.trim().isNotEmpty) {
+          return _resolveZipPath(_zipDirName(xhtmlPath), src.trim());
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  static bool _looksLikeCoverImage(String href, String mediaType) {
+    if (!_isImageManifestItem(href, mediaType)) return false;
+    final name = _zipBaseName(href).toLowerCase();
+    return name.startsWith('cover.') ||
+        name.startsWith('folder.') ||
+        name.startsWith('poster.') ||
+        name.startsWith('front.') ||
+        name.contains('cover') ||
+        name.contains('poster');
+  }
+
+  static bool _isImageManifestItem(String href, String mediaType) {
+    final lowerHref = href.toLowerCase();
+    final lowerMediaType = mediaType.toLowerCase();
+    return lowerMediaType.startsWith('image/') ||
+        lowerHref.endsWith('.jpg') ||
+        lowerHref.endsWith('.jpeg') ||
+        lowerHref.endsWith('.png') ||
+        lowerHref.endsWith('.webp');
+  }
+
+  static ArchiveFile? _findArchiveFile(Archive archive, String path) {
+    final normalizedPath = _normalizeZipPath(path).toLowerCase();
+    for (final file in archive.files) {
+      if (_normalizeZipPath(file.name).toLowerCase() == normalizedPath) {
+        return file;
+      }
+    }
+    return null;
+  }
+
+  static String _archiveFileText(ArchiveFile file) {
+    return utf8.decode(file.content as List<int>, allowMalformed: true);
+  }
+
+  static String _resolveZipPath(String basePath, String href) {
+    final cleanHref = Uri.decodeFull(
+      href.split('#').first.split('?').first,
+    ).replaceAll('\\', '/');
+    if (cleanHref.startsWith('/')) {
+      return _normalizeZipPath(cleanHref.substring(1));
+    }
+
+    final parts = <String>[
+      ..._normalizeZipPath(
+        basePath,
+      ).split('/').where((part) => part.isNotEmpty),
+      ...cleanHref.split('/'),
+    ];
+    final normalized = <String>[];
+    for (final part in parts) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (normalized.isNotEmpty) normalized.removeLast();
+      } else {
+        normalized.add(part);
+      }
+    }
+    return normalized.join('/');
+  }
+
+  static String _normalizeZipPath(String value) {
+    return value.replaceAll('\\', '/').replaceFirst(RegExp(r'^/+'), '');
+  }
+
+  static String _zipDirName(String path) {
+    final normalized = _normalizeZipPath(path);
+    final index = normalized.lastIndexOf('/');
+    if (index == -1) return '';
+    return normalized.substring(0, index);
+  }
+
+  static String _zipBaseName(String path) {
+    final normalized = _normalizeZipPath(path);
+    final index = normalized.lastIndexOf('/');
+    if (index == -1) return normalized;
+    return normalized.substring(index + 1);
   }
 
   static int _countReadableChapters(List<epubx.EpubChapter> chapters) {
@@ -582,6 +826,9 @@ class ApiService {
       final existingStory = localStories[index];
       final savedStory = updatedStory.copyWith(
         id: existingStory.id,
+        iconUrl: updatedStory.iconUrl.isNotEmpty
+            ? updatedStory.iconUrl
+            : existingStory.iconUrl,
         currentChapter: existingStory.currentChapter,
         savedChapterIndex: existingStory.savedChapterIndex > 0
             ? existingStory.savedChapterIndex
