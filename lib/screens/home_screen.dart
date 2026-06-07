@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 
 import '../models/story.dart';
@@ -17,6 +18,8 @@ import 'community_screen.dart';
 import 'profile_screen.dart';
 
 enum _LibrarySort { recent, title, progress }
+
+const String _showReadingHistoryKey = 'home_show_reading_history';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isGridView = true;
   int _columnCount = 2;
   _LibrarySort _sortMode = _LibrarySort.recent;
+  bool _showReadingHistory = false;
 
   bool _isSearching = false;
   String _searchQuery = '';
@@ -46,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadHomePreferences();
     _loadStories();
   }
 
@@ -65,6 +70,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _lastReadStory = await ApiService.getLastReadStory();
     _applySearch();
     setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadHomePreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _showReadingHistory = prefs.getBool(_showReadingHistoryKey) ?? false;
+    });
+  }
+
+  Future<void> _setReadingHistoryVisible(bool visible) async {
+    setState(() => _showReadingHistory = visible);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showReadingHistoryKey, visible);
   }
 
   void _applySearch() {
@@ -218,6 +237,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    secondary: const Icon(Icons.history_rounded),
+                    title: const Text('Hiển thị lịch sử đọc'),
+                    subtitle: const Text('Tắt để Kệ sách gọn hơn'),
+                    value: _showReadingHistory,
+                    onChanged: (value) {
+                      _setReadingHistoryVisible(value);
+                      setModalState(() {});
+                    },
                   ),
                   if (_isGridView) ...[
                     const SizedBox(height: 16),
@@ -659,6 +690,59 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHistoryStrip(bool isDark) {
     if (_readingHistory.isEmpty) return const SizedBox.shrink();
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (!_showReadingHistory) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Material(
+          color: isDark
+              ? const Color(0xFF151A18)
+              : colorScheme.primary.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _setReadingHistoryVisible(true),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.history_rounded,
+                    size: 19,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'Lịch sử đọc',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${_readingHistory.length}',
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final markers = _readingHistory.take(8).toList();
 
     return Column(
@@ -674,11 +758,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Lịch sử đọc',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => _setReadingHistoryVisible(false),
+                icon: const Icon(Icons.keyboard_arrow_up_rounded, size: 18),
+                label: const Text('Ẩn'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+              ),
             ],
           ),
         ),
         SizedBox(
-          height: 124,
+          height: 112,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -693,7 +787,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(8),
                 onTap: () => _openStory(story),
                 child: SizedBox(
-                  width: 86,
+                  width: 76,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
