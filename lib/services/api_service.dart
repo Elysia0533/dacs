@@ -50,6 +50,7 @@ class ApiService {
   static final Map<String, Timer> _scrollSaveTimers = {};
   static final Map<String, Future<String?>> _driveCoverTasks = {};
   static final Set<String> _driveCoverMisses = {};
+  static final Set<String> _localCoverRepairMisses = {};
 
   static Future<Map<String, dynamic>> extractEpubMetadata(
     String filePath,
@@ -408,7 +409,64 @@ class ApiService {
   static Future<List<Story>> fetchPersonalStories() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
-    return localStoriesJson.map((s) => Story.fromJson(json.decode(s))).toList();
+    final stories = localStoriesJson
+        .map((s) => Story.fromJson(json.decode(s)))
+        .toList();
+    return _repairMissingLocalEpubCovers(prefs, stories);
+  }
+
+  static Future<List<Story>> _repairMissingLocalEpubCovers(
+    SharedPreferences prefs,
+    List<Story> stories,
+  ) async {
+    var changed = false;
+    final repairedStories = <Story>[];
+
+    for (final story in stories) {
+      var repairedStory = story;
+      if (await _shouldRepairLocalEpubCover(story)) {
+        try {
+          final metadata = await extractEpubMetadata(story.localPath);
+          final coverPath = metadata['coverPath'];
+          if (coverPath is String && coverPath.isNotEmpty) {
+            repairedStory = story.copyWith(iconUrl: coverPath);
+            changed = true;
+          } else {
+            _localCoverRepairMisses.add(story.localPath);
+          }
+        } catch (e) {
+          debugPrint('Khong the khoi phuc bia EPUB local: $e');
+          _localCoverRepairMisses.add(story.localPath);
+        }
+      }
+      repairedStories.add(repairedStory);
+    }
+
+    if (changed) {
+      await prefs.setStringList(
+        _localStoriesKey,
+        repairedStories.map((story) => json.encode(story.toJson())).toList(),
+      );
+    }
+
+    return repairedStories;
+  }
+
+  static Future<bool> _shouldRepairLocalEpubCover(Story story) async {
+    final localPath = story.localPath.trim();
+    if (localPath.isEmpty || _localCoverRepairMisses.contains(localPath)) {
+      return false;
+    }
+
+    final fileType = story.fileType.trim().toLowerCase();
+    final isEpub =
+        fileType == 'epub' || localPath.toLowerCase().endsWith('.epub');
+    if (!isEpub || !await File(localPath).exists()) return false;
+
+    final iconPath = story.iconUrl.trim();
+    if (iconPath.isEmpty || iconPath.startsWith('assets/')) return true;
+    if (iconPath.startsWith('http')) return false;
+    return !await File(iconPath).exists();
   }
 
   static Future<List<Story>> fetchServerStories() async {
