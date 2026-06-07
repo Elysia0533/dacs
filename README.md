@@ -1,118 +1,111 @@
-# vBook - Ung Dung Doc Truyen Flutter
+# vBook - Ứng Dụng Đọc Truyện Flutter
 
-vBook la ung dung doc truyen tren Android duoc xay dung bang Flutter. Ung dung
-huong toi trai nghiem gan voi cac app doc truyen quen thuoc nhu Tachiyomi,
-VBook va cac web doc light novel/truyen chu: co ke sach ca nhan, kham pha truyen,
-doc EPUB/PDF/TXT, luu tien do, doc offline, nghe truyen bang TTS va dong bo tai
-khoan bang Firebase.
+vBook là ứng dụng đọc truyện trên Android được xây dựng bằng Flutter. Ứng dụng
+hướng đến trải nghiệm quen thuộc với các app đọc truyện như Tachiyomi, VBook và
+các website đọc light novel/truyện chữ: có kệ sách cá nhân, khám phá truyện,
+đọc EPUB/PDF/TXT, tải truyện từ Google Drive, lưu tiến độ đọc, nghe truyện bằng
+Text-to-Speech và đồng bộ tài khoản bằng Firebase.
 
-Du an duoc hoan thien theo huong co the cai APK va test truc tiep, khong can mo
-server rieng tren may tinh.
+Dự án được hoàn thiện theo hướng có thể build APK và cài trực tiếp trên điện
+thoại, không cần chạy web server hoặc backend riêng trên máy cá nhân.
 
-## Thong Tin Do An
+## Thông Tin Đồ Án
 
-| Muc | Noi dung |
+| Mục | Nội dung |
 | --- | --- |
-| Ten ung dung | vBook |
-| Nen tang | Flutter / Android |
-| Ngon ngu | Dart |
-| Backend | Firebase Auth + Cloud Firestore |
-| Nguon truyen | Google Drive API, file local, offline assets |
-| Dinh dang doc | EPUB, PDF, TXT |
+| Tên ứng dụng | vBook |
+| Nền tảng | Flutter / Android |
+| Ngôn ngữ | Dart |
+| Backend | Firebase Authentication + Cloud Firestore |
+| Nguồn truyện | Google Drive, file local, offline assets |
+| Định dạng đọc | EPUB, PDF, TXT |
 | Package Android | `com.vbook.reader` |
-| Trang thai | San sang test APK thuc te |
+| Trạng thái | Sẵn sàng test APK thực tế |
 
-## Muc Tieu
+## Mục Tiêu
 
-vBook duoc xay dung de giai quyet bai toan doc va quan ly truyen tren dien
-thoai:
+vBook được xây dựng để hỗ trợ người dùng đọc và quản lý truyện trên điện thoại:
 
-- Nguoi dung co the doc truyen online tu Google Drive ma khong can backend rieng.
-- Nguoi dung co the tai truyen ve may de doc offline.
-- Ung dung ho tro nhieu dinh dang pho bien: EPUB, PDF va TXT.
-- Tai khoan, thu vien ca nhan, tien do doc va cong dong duoc luu bang Firebase.
-- Giao dien gon, de dung, phu hop voi thoi quen doc truyen tren mobile.
+- Đọc truyện trực tiếp từ Google Drive.
+- Tải truyện về máy để đọc offline.
+- Quản lý thư viện cá nhân và tiến độ đọc.
+- Hỗ trợ tài khoản người dùng bằng Firebase.
+- Có khu vực cộng đồng để người dùng trao đổi.
+- Giao diện tối ưu cho thói quen đọc truyện trên mobile.
 
-## Chuc Nang Chinh
+## Chức Năng Chính
 
-### 1. Ke sach ca nhan
+### Kệ Sách Cá Nhân
 
-- Hien thi truyen da them vao thu vien.
-- Ho tro xem dang danh sach va dang luoi.
-- Tim kiem truyen trong thu vien.
-- Sap xep theo gan day, ten truyen va tien do doc.
-- Hien thi truyen doc gan nhat de tiep tuc doc nhanh.
-- Xoa truyen va don file thuoc du lieu cua app.
+- Hiển thị truyện đã thêm vào thư viện.
+- Hỗ trợ dạng lưới và dạng danh sách.
+- Tìm kiếm truyện theo tên, tác giả, thể loại.
+- Sắp xếp theo gần đây, tên truyện và tiến độ đọc.
+- Hiển thị truyện đang đọc gần nhất để tiếp tục nhanh.
+- Xóa truyện và dọn dữ liệu thuộc phạm vi app.
 
-### 2. Kham pha truyen
+### Khám Phá Truyện
 
-- Lay danh sach truyen tu Google Drive.
-- Ho tro nhieu thu muc Drive.
-- Ho tro `catalog.json` neu thu muc co metadata.
-- Neu khong co catalog, app tu quet file EPUB/PDF/TXT trong thu muc.
-- Co cache danh sach truyen de giam tinh trang man hinh trong khi mang yeu.
-- Hien thi bia truyen, tac gia, the loai va thong tin co ban.
+- Lấy danh sách truyện từ nhiều thư mục Google Drive.
+- Hỗ trợ `catalog.json` nếu thư mục có metadata.
+- Nếu không có catalog, app tự quét file EPUB/PDF/TXT trong thư mục.
+- Cache danh sách truyện để giảm thời gian tải lại.
+- Tự xử lý ảnh bìa từ Drive, ảnh rời hoặc ảnh bìa nằm trong EPUB.
 
-### 3. Chi tiet truyen
+### Chi Tiết Truyện
 
-- Hien thi bia, ten truyen, tac gia, mo ta, the loai va dinh dang file.
-- Doc online doi voi EPUB/PDF tu Drive.
-- Tai truyen ve may de doc offline.
-- Them truyen vao thu vien ca nhan.
-- Tu lay metadata EPUB neu co: bia, tac gia, mo ta, so chuong.
+- Hiển thị ảnh bìa, tên truyện, tác giả, mô tả, thể loại và định dạng file.
+- Cho phép đọc trực tiếp truyện từ Drive.
+- Cho phép tải truyện về máy để đọc offline.
+- Tự đọc metadata EPUB như bìa, tác giả, mô tả và số chương.
 
-### 4. Man hinh doc
+### Màn Hình Đọc
 
-- Doc EPUB theo chuong.
-- Doc PDF bang trinh doc PDF rieng.
-- Doc TXT voi noi dung text.
-- Luu chuong dang doc va vi tri doc.
-- Tuy chinh co chu, font, nen doc va gian dong.
-- Ho tro dark mode/light mode.
+- Đọc EPUB theo chương.
+- Đọc PDF bằng trình đọc PDF riêng.
+- Đọc TXT bằng trình đọc văn bản.
+- Lưu chương đang đọc và vị trí cuộn.
+- Tùy chỉnh cỡ chữ, font, nền đọc và giãn dòng.
+- Hỗ trợ giao diện sáng/tối.
 
-### 5. Audio doc truyen
+### Audio Đọc Truyện
 
-- Ho tro Text-to-Speech cho EPUB/TXT.
-- Dieu chinh toc do doc, cao do va am luong.
-- Co dieu khien phat/dung.
-- Ho tro tiep tuc doc theo noi dung dang mo.
+- Hỗ trợ Text-to-Speech cho EPUB/TXT.
+- Có điều khiển phát, dừng và tiếp tục.
+- Điều chỉnh tốc độ đọc, cao độ và âm lượng.
+- Phù hợp khi người dùng muốn nghe truyện thay vì đọc thủ công.
 
-### 6. Tai khoan va dong bo
+### Tài Khoản Và Đồng Bộ
 
-- Dang ky tai khoan bang email va mat khau.
-- Dang nhap bang Firebase Authentication.
-- Gui email xac minh tai khoan.
-- Luu profile nguoi dung tren Cloud Firestore.
-- Dong bo thu vien va tien do doc theo user.
-- Co che do fallback local neu Firebase chua cau hinh.
+- Đăng ký bằng email và mật khẩu.
+- Đăng nhập bằng Firebase Authentication.
+- Gửi email xác minh tài khoản.
+- Lưu hồ sơ người dùng trên Cloud Firestore.
+- Đồng bộ thư viện cá nhân và tiến độ đọc theo từng user.
+- Có fallback local để app vẫn dùng được khi Firebase chưa sẵn sàng.
 
-### 7. Cong dong
+### Cộng Đồng
 
-- Hien thi tin nhan cong dong.
-- Nguoi dung da dang nhap va xac minh email co the gui tin nhan.
-- Tin nhan duoc luu tren Cloud Firestore.
-- Admin co the quan ly du lieu theo rules.
+- Hiển thị tin nhắn cộng đồng.
+- Người dùng đã đăng nhập và xác minh email có thể gửi tin nhắn.
+- Tin nhắn được lưu trên Cloud Firestore.
+- Admin có thể quản lý dữ liệu theo Firestore Rules.
 
-### 8. Nhan dien ung dung
-
-- Da co icon app rieng.
-- Da co splash screen khi mo ung dung.
-- Da co anh bia mac dinh cho truyen khong co anh hoac anh bi loi.
-
-## Kien Truc He Thong
+## Kiến Trúc Tổng Quan
 
 ```text
 Flutter APK
   |
   |-- Google Drive API
-  |     |-- Lay catalog truyen
-  |     |-- Quet file EPUB/PDF/TXT
-  |     |-- Tai file truyen ve may
+  |     |-- Quét thư mục truyện
+  |     |-- Đọc catalog.json nếu có
+  |     |-- Tải EPUB/PDF/TXT
+  |     |-- Lấy ảnh bìa từ ảnh rời hoặc EPUB
   |
   |-- Firebase Authentication
-  |     |-- Dang ky
-  |     |-- Dang nhap
-  |     |-- Xac minh email
+  |     |-- Đăng ký
+  |     |-- Đăng nhập
+  |     |-- Xác minh email
   |
   |-- Cloud Firestore
   |     |-- users/{uid}
@@ -120,40 +113,38 @@ Flutter APK
   |     |-- community_messages/{messageId}
   |
   |-- Local Storage
-        |-- Truyen da tai ve
-        |-- Cache danh sach truyen
-        |-- Cai dat doc
-        |-- Tien do doc gan nhat
+        |-- Truyện đã tải về
+        |-- Cache danh sách Drive
+        |-- Ảnh bìa đã trích xuất
+        |-- Cài đặt đọc
+        |-- Tiến độ đọc
 ```
 
-## Cau Truc Thu Muc
+## Cấu Trúc Thư Mục
 
 ```text
 lib/
-  models/                 Model du lieu cua app
-  screens/                Cac man hinh chinh
-  services/               Xu ly Drive, Firebase, local storage
-  theme/                  Theme, user provider, reading settings
-  widgets/                Widget dung chung
+  models/                 Model dữ liệu
+  screens/                Các màn hình chính
+  services/               Drive, Firebase, local storage
+  theme/                  Theme và provider
+  widgets/                Widget dùng chung
 
 assets/
-  branding/               Icon/splash trong app
-  covers/                 Anh bia mac dinh
-  offline_stories/        Truyen offline demo
+  branding/               Icon và splash
+  covers/                 Ảnh bìa mặc định
+  offline_stories/        Truyện offline mẫu
 
-android/
-  app/google-services.json Cau hinh Firebase Android
-
-firestore.rules           Rules bao mat Cloud Firestore
-scripts/                  Script build/deploy ho tro
+scripts/                  Script build/deploy hỗ trợ
 test/                     Smoke test Flutter
+firestore.rules           Rules bảo mật Cloud Firestore
 ```
 
 ## Database Firestore
 
 ### `users/{uid}`
 
-Luu thong tin tai khoan:
+Lưu thông tin tài khoản:
 
 ```json
 {
@@ -170,7 +161,7 @@ Luu thong tin tai khoan:
 
 ### `users/{uid}/library/{storyId}`
 
-Luu thu vien va tien do doc:
+Lưu truyện trong thư viện và tiến độ đọc:
 
 ```json
 {
@@ -186,59 +177,50 @@ Luu thu vien va tien do doc:
 
 ### `community_messages/{messageId}`
 
-Luu tin nhan cong dong:
+Lưu tin nhắn cộng đồng:
 
 ```json
 {
   "userId": "firebase_uid",
   "displayName": "User",
   "avatarUrl": "",
-  "text": "Noi dung tin nhan",
+  "text": "Nội dung tin nhắn",
   "createdAt": "..."
 }
 ```
 
-## Cau Hinh Firebase
+## Cấu Hình Firebase
 
-Ung dung dang dung Firebase Android config qua file:
+Ứng dụng dùng Firebase Android config tại:
 
 ```text
 android/app/google-services.json
 ```
 
-Can thuc hien tren Firebase Console:
+Các bước cần có trên Firebase Console:
 
-1. Tao Firebase project.
-2. Them Android app voi package name `com.vbook.reader`.
-3. Bat `Authentication > Sign-in method > Email/Password`.
-4. Tao Cloud Firestore database.
-5. Dan noi dung `firestore.rules` vao tab Rules va bam Publish.
+1. Tạo Firebase project.
+2. Thêm Android app với package name `com.vbook.reader`.
+3. Bật `Authentication > Sign-in method > Email/Password`.
+4. Tạo Cloud Firestore database.
+5. Dán nội dung `firestore.rules` vào Firestore Rules và Publish.
 
-Email admin hien tai trong rules:
+Email admin trong rules hiện tại:
 
 ```text
 vglduc25@gmail.com
 ```
 
-Firebase API key trong `google-services.json` khong phai mat khau database.
-Quyen truy cap du lieu duoc bao ve bang Firebase Auth va Firestore Rules.
+## Cấu Hình Google Drive
 
-Tai lieu tham khao:
-
-- Firebase Android setup: https://firebase.google.com/docs/android/setup
-- Firebase Auth email/password: https://firebase.google.com/docs/auth/flutter/password-auth
-- Firebase API keys: https://firebase.google.com/docs/projects/api-keys
-
-## Cau Hinh Google Drive
-
-App lay truyen tu Google Drive thong qua Drive API. API key duoc truyen khi
-build/chay app:
+App đọc truyện từ Google Drive qua Drive API. API key được truyền khi chạy hoặc
+build app:
 
 ```powershell
 flutter run --dart-define "GOOGLE_DRIVE_API_KEY=your_drive_key"
 ```
 
-Co the truyen them thu muc Drive:
+Có thể truyền thêm thư mục Drive:
 
 ```powershell
 flutter run `
@@ -246,52 +228,45 @@ flutter run `
   --dart-define "GOOGLE_DRIVE_FOLDER_URLS=https://drive.google.com/drive/folders/..."
 ```
 
-Neu khong truyen folder rieng, app dung danh sach demo folder trong
+Nếu không truyền folder riêng, app dùng danh sách thư mục demo trong
 `GoogleDriveService.demoFolderUrls`.
 
-## Chay Ung Dung
+## Chạy Ứng Dụng
 
 ```powershell
 flutter pub get
-flutter run
-```
-
-Neu muon test doc Drive that:
-
-```powershell
 flutter run --dart-define "GOOGLE_DRIVE_API_KEY=your_drive_key"
 ```
 
 ## Build APK Release
 
-APK release moi nhat duoc tao tai:
+APK release được tạo tại:
 
 ```text
 build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Build nhanh:
+Build trực tiếp:
 
 ```powershell
 flutter build apk --release --dart-define "GOOGLE_DRIVE_API_KEY=your_drive_key"
 ```
 
-Build bang file cau hinh:
+Build bằng script:
 
 ```powershell
-Copy-Item release.env.example release.env
 .\scripts\build_release_apk.ps1
 ```
 
-Neu muon yeu cau day du Firebase config bang `release.env`:
+Nếu muốn bắt buộc cấu hình Firebase khi build:
 
 ```powershell
 .\scripts\build_release_apk.ps1 -RequireFirebase
 ```
 
-## Kiem Thu
+## Kiểm Thử
 
-Da kiem tra trong qua trinh hoan thien:
+Các lệnh kiểm tra chính:
 
 ```powershell
 flutter analyze
@@ -299,56 +274,53 @@ flutter test
 flutter build apk --release
 ```
 
-Ket qua gan nhat:
+Checklist test trên điện thoại:
 
-- `flutter analyze`: khong loi.
-- `flutter test`: pass.
-- APK release build thanh cong.
+- Cài APK và mở app.
+- Kiểm tra icon app và splash screen.
+- Vào Khám phá, tải danh sách truyện từ Drive.
+- Mở truyện EPUB/PDF/TXT.
+- Kiểm tra ảnh bìa truyện trong danh sách và chi tiết.
+- Tải truyện về máy và đọc offline.
+- Đổi theme sáng/tối.
+- Tùy chỉnh font, cỡ chữ và nền đọc.
+- Bật Text-to-Speech.
+- Đăng ký tài khoản mới.
+- Xác minh email.
+- Đăng nhập lại.
+- Gửi tin nhắn cộng đồng.
+- Đọc vài chương, thoát app, mở lại và kiểm tra tiến độ đọc.
 
-Checklist test tren dien thoai that:
+## Trạng Thái Hoàn Thiện
 
-- Cai APK va mo app lan dau.
-- Kiem tra icon app va splash screen.
-- Vao Kham pha, tai danh sach truyen tu Drive.
-- Mo mot truyen EPUB.
-- Mo mot truyen PDF.
-- Mo mot truyen TXT.
-- Tai truyen ve may va doc offline.
-- Doi theme sang/toi.
-- Thay doi co chu, font va nen doc.
-- Bat TTS nghe truyen.
-- Dang ky tai khoan moi.
-- Bam link xac minh email.
-- Dang nhap lai.
-- Gui tin nhan cong dong.
-- Doc vai chuong, thoat app, mo lai va kiem tra tien do doc.
+Dự án hiện đã có các phần quan trọng cho một app đọc truyện hoàn chỉnh:
 
-## Diem Hoan Thien
+- Giao diện chính cho kệ sách, khám phá, chi tiết truyện, đọc truyện, cộng đồng
+  và cá nhân.
+- Đọc được EPUB/PDF/TXT.
+- Tải truyện từ Google Drive và đọc offline.
+- Trích xuất ảnh bìa từ EPUB, kể cả EPUB tải từ Drive.
+- Đăng ký, đăng nhập và xác minh email bằng Firebase.
+- Đồng bộ thư viện, tiến độ đọc và tin nhắn cộng đồng bằng Firestore.
+- Có rules bảo mật Firestore.
+- Có APK release để test trên thiết bị thật.
 
-Muc do hoan thien hien tai co the danh gia khoang 90-95% cho muc tieu do an:
+Mức độ hoàn thiện hiện tại phù hợp để demo và bảo vệ đồ án. Phần còn lại chủ yếu
+là test thực tế trên điện thoại, ghi nhận lỗi nhỏ nếu có và chuẩn bị ảnh minh
+họa cho báo cáo/trình bày.
 
-- Luong doc truyen chinh da co.
-- APK co the build va cai truc tiep.
-- Firebase da du cau hinh Android.
-- Firestore Rules da co san va co email admin.
-- Google Drive doc truyen truc tiep.
-- UI da du cac man hinh can thiet cho app doc truyen.
+## Hướng Phát Triển
 
-Phan con lai chu yeu la test thuc te tren dien thoai, sua loi phat sinh va chup
-anh minh chung cho bao cao/trinh bay.
+- Thêm bookmark và ghi chú khi đọc.
+- Thêm lịch sử đọc chi tiết hơn.
+- Thêm bình luận/đánh giá theo từng truyện.
+- Tối ưu cache ảnh bìa cho EPUB dung lượng lớn.
+- Thêm App Check cho Firebase nếu đưa vào sử dụng công khai.
+- Ký APK bằng release key riêng.
 
-## Huong Phat Trien
+## Kết Luận
 
-- Them bookmark va ghi chu trong man hinh doc.
-- Them lich su doc chi tiet hon.
-- Them danh gia/binh luan theo tung truyen.
-- Toi uu cache anh bia va file lon.
-- Them App Check cho Firebase khi dua vao su dung cong khai.
-- Ky APK bang release key rieng thay vi debug signing.
-
-## Ket Luan
-
-vBook da dat muc co the demo va bao ve do an: co giao dien doc truyen, nguon
-truyen truc tuyen, doc offline, tai khoan, dong bo, cong dong va APK release.
-Trong giai doan cuoi, viec quan trong nhat la test tren may that, ghi lai loi
-neu co va chuan bi minh chung cac man hinh chinh.
+vBook đáp ứng mục tiêu đồ án: có nguồn truyện online, đọc offline, tài khoản,
+đồng bộ dữ liệu, cộng đồng, giao diện đọc và APK cài trực tiếp. Ứng dụng có thể
+dùng để test thực tế và tiếp tục hoàn thiện dựa trên phản hồi khi chạy trên máy
+Android thật.
