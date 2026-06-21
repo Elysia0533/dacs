@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/user_provider.dart';
+import 'reading_stats_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -315,15 +316,44 @@ class ProfileScreen extends StatelessWidget {
                 onChanged: (_) => themeProvider.toggleTheme(),
               ),
             ),
-            _buildListTile(Icons.book_outlined, 'Lưu trữ', isDark),
             _buildListTile(
+              context,
+              Icons.book_outlined,
+              'Lưu trữ',
+              isDark,
+              subtitle: 'Quản lý sách đã tải về máy',
+              onTap: () => _showStorageInfo(context, isDark),
+            ),
+            _buildListTile(
+              context,
               Icons.bar_chart_rounded,
               'Thống kê đọc sách',
               isDark,
+              subtitle: 'Xem lịch sử và tiến trình',
+              onTap: () => _showReadingStats(context, isDark),
             ),
-            _buildListTile(Icons.sync_rounded, 'Đồng bộ backend', isDark),
+            _buildListTile(
+              context,
+              Icons.sync_rounded,
+              'Đồng bộ backend',
+              isDark,
+              subtitle: userProvider.isLoggedIn
+                  ? 'Đang đăng nhập: ${userProvider.email}'
+                  : 'Chưa đăng nhập',
+              onTap: () => _showLoginDialog(context),
+            ),
             _buildSectionHeader('Kết nối', sectionBgColor, textColor),
-            _buildListTile(Icons.share_outlined, 'Mời bạn bè sử dụng', isDark),
+            _buildListTile(
+              context,
+              Icons.share_outlined,
+              'Mời bạn bè sử dụng',
+              isDark,
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Tính năng chia sẻ sắp ra mắt!')),
+                );
+              },
+            ),
             const SizedBox(height: 32),
             Center(
               child: Text(
@@ -487,7 +517,14 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildListTile(IconData icon, String title, bool isDark) {
+  Widget _buildListTile(
+    BuildContext context,
+    IconData icon,
+    String title,
+    bool isDark, {
+    String? subtitle,
+    VoidCallback? onTap,
+  }) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
       leading: Icon(icon, color: isDark ? Colors.white70 : Colors.black87),
@@ -498,7 +535,77 @@ class ProfileScreen extends StatelessWidget {
           color: isDark ? Colors.white : Colors.black87,
         ),
       ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+              ),
+            )
+          : null,
       trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+      onTap: onTap,
+    );
+  }
+
+  void _showStorageInfo(BuildContext context, bool isDark) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.book_outlined),
+            SizedBox(width: 10),
+            Text('Lưu trữ'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Sách đã tải về được lưu trong bộ nhớ trong của thiết bị.',
+              style: TextStyle(fontSize: 14, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.blue.withValues(alpha: 0.1)
+                    : Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Vào tab Kệ sách → giữ lâu một truyện để xóa và giải phóng bộ nhớ.',
+                      style: TextStyle(fontSize: 13, color: Colors.blue),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReadingStats(BuildContext context, bool isDark) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ReadingStatsScreen()),
     );
   }
 }

@@ -368,7 +368,7 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                 children: [
                   Row(
                     children: [
-                      // Nếu là truyện từ Drive và CHƯA tải về: chỉ hiện nút "Lưu về máy"
+                      // Case 1: Truyện từ Drive CHƯA tải về → nút "Lưu về máy"
                       if (_story.isFromDrive && _story.localPath.isEmpty) ...[
                         Expanded(
                           child: FilledButton.icon(
@@ -396,8 +396,36 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                             ),
                           ),
                         ),
-                      ] else ...[
-                        // Đã tải về hoặc là truyện local: hiện nút "Đọc ngay"
+                      ]
+                      // Case 2: Truyện backend CHƯA có file local & không có Drive
+                      else if (!_story.isLocal && !_story.isFromDrive && _story.localPath.isEmpty) ...[
+                        Expanded(
+                          flex: 3,
+                          child: FilledButton.icon(
+                            onPressed: null,
+                            icon: const Icon(Icons.lock_outline, size: 20),
+                            label: const Text('Chưa có file đọc'),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton.outlined(
+                          onPressed: _addToLibrary,
+                          icon: const Icon(Icons.library_add_rounded),
+                          tooltip: 'Thêm vào kệ',
+                        ),
+                      ]
+                      // Case 3: Đã có file local → nút "Đọc ngay"
+                      else ...[
                         Expanded(
                           flex: 3,
                           child: FilledButton.icon(
@@ -431,6 +459,30 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                       ],
                     ],
                   ),
+                  // Thông báo khi chưa có file
+                  if (!_story.isLocal && !_story.isFromDrive && _story.localPath.isEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Truyện này chưa có file đính kèm. Admin cần thêm driveFileId để người dùng có thể tải xuống.',
+                              style: TextStyle(fontSize: 13, color: Colors.orange),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (_isDownloading) ...[
                     const SizedBox(height: 10),
                     LinearProgressIndicator(value: _downloadProgress),

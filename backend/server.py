@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlparse
 ROOT_DIR = Path(__file__).resolve().parent
 SCHEMA_PATH = ROOT_DIR / "schema.sql"
 DB_PATH = Path(os.environ.get("VBOOK_DB", ROOT_DIR / "data" / "vbook.db"))
-HOST = os.environ.get("VBOOK_HOST", "127.0.0.1")
+HOST = os.environ.get("VBOOK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("VBOOK_PORT", "8080"))
 SECRET = os.environ.get("VBOOK_SECRET", "dev-secret-change-me")
 TOKEN_TTL_SECONDS = int(os.environ.get("VBOOK_TOKEN_TTL", str(60 * 60 * 24 * 7)))
