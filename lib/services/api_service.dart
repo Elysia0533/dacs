@@ -40,6 +40,7 @@ class EmailVerificationResult {
 
 class ApiService {
   static const String _localStoriesKey = 'local_imported_stories';
+<<<<<<< Updated upstream
   static const String _serverStoriesKey = 'drive_story_catalog_cache';
   static const String _serverStoriesCachedAtKey =
       'drive_story_catalog_cache_at';
@@ -55,6 +56,19 @@ class ApiService {
   static final Map<String, Future<String?>> _driveCoverTasks = {};
   static final Set<String> _driveCoverMisses = {};
   static final Set<String> _localCoverRepairMisses = {};
+=======
+  static const String _serverStoriesKey = 'server_stories';
+  static const String _authTokenKey = 'backend_auth_token';
+  static const String _authUserKey = 'backend_auth_user';
+  static String get _apiBaseUrl {
+    const envUrl = String.fromEnvironment('VBOOK_API_BASE_URL');
+    if (envUrl.isNotEmpty) return envUrl;
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8080';
+    }
+    return 'http://127.0.0.1:8080';
+  }
+>>>>>>> Stashed changes
 
   static Future<Map<String, dynamic>> extractEpubMetadata(
     String filePath,

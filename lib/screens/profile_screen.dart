@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/user_provider.dart';
 import 'reading_stats_screen.dart';
+import 'storage_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -550,55 +551,9 @@ class ProfileScreen extends StatelessWidget {
   }
 
   void _showStorageInfo(BuildContext context, bool isDark) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.book_outlined),
-            SizedBox(width: 10),
-            Text('Lưu trữ'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Sách đã tải về được lưu trong bộ nhớ trong của thiết bị.',
-              style: TextStyle(fontSize: 14, height: 1.5),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.blue.withValues(alpha: 0.1)
-                    : Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue, size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Vào tab Kệ sách → giữ lâu một truyện để xóa và giải phóng bộ nhớ.',
-                      style: TextStyle(fontSize: 13, color: Colors.blue),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Đóng'),
-          ),
-        ],
-      ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StorageScreen()),
     );
   }
 
