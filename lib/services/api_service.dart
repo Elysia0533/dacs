@@ -40,7 +40,6 @@ class EmailVerificationResult {
 
 class ApiService {
   static const String _localStoriesKey = 'local_imported_stories';
-<<<<<<< Updated upstream
   static const String _serverStoriesKey = 'drive_story_catalog_cache';
   static const String _serverStoriesCachedAtKey =
       'drive_story_catalog_cache_at';
@@ -52,14 +51,11 @@ class ApiService {
   static const String _localCommunityMessagesKey = 'local_community_messages';
   static const String _readingHistoryKey = 'reading_history_markers';
   static const String _readingBookmarksKey = 'reading_bookmarks';
+  static const String _storyRatingsKey = 'story_ratings'; // storyId -> userRating (int)
   static final Map<String, Timer> _scrollSaveTimers = {};
   static final Map<String, Future<String?>> _driveCoverTasks = {};
   static final Set<String> _driveCoverMisses = {};
   static final Set<String> _localCoverRepairMisses = {};
-=======
-  static const String _serverStoriesKey = 'server_stories';
-  static const String _authTokenKey = 'backend_auth_token';
-  static const String _authUserKey = 'backend_auth_user';
   static String get _apiBaseUrl {
     const envUrl = String.fromEnvironment('VBOOK_API_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
@@ -68,7 +64,6 @@ class ApiService {
     }
     return 'http://127.0.0.1:8080';
   }
->>>>>>> Stashed changes
 
   static Future<Map<String, dynamic>> extractEpubMetadata(
     String filePath,
@@ -616,10 +611,7 @@ class ApiService {
       password: password,
       displayName: displayName,
     );
-    return RegisterResult(
-      user: user,
-      emailVerificationRequired: !user.emailVerified,
-    );
+    return RegisterResult(user: user, emailVerificationRequired: false);
   }
 
   static Future<AppUser> verifyEmailWithBackend({
@@ -747,7 +739,19 @@ class ApiService {
       return _fetchLocalCommunityMessages();
     }
 
-    return FirebaseBackendService.fetchCommunityMessages();
+    try {
+      final cloudMessages = await FirebaseBackendService.fetchCommunityMessages();
+      final localMessages = await _fetchLocalCommunityMessages();
+
+      // Gộp local + cloud, loại bỏ trùng lặp theo id
+      final allIds = cloudMessages.map((m) => m.id).toSet();
+      final onlyLocal = localMessages.where((m) => !allIds.contains(m.id)).toList();
+      final merged = [...cloudMessages, ...onlyLocal];
+      merged.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      return merged;
+    } catch (_) {
+      return _fetchLocalCommunityMessages();
+    }
   }
 
   static Future<CommunityMessage> sendCommunityMessage(String text) async {
@@ -755,7 +759,12 @@ class ApiService {
       return _sendLocalCommunityMessage(text);
     }
 
-    return FirebaseBackendService.sendCommunityMessage(text);
+    try {
+      return await FirebaseBackendService.sendCommunityMessage(text);
+    } catch (e) {
+      // Nếu Firebase lỗi (permission-denied, offline...) thì lưu local
+      return _sendLocalCommunityMessage(text);
+    }
   }
 
   static Future<AppUser> _registerLocalAccount({
@@ -1471,5 +1480,67 @@ class ApiService {
     } catch (e) {
       debugPrint('Lỗi khởi tạo offline stories: $e');
     }
+  }
+
+  // ─── Rating / Đánh giá sao ───────────────────────────────────────────────
+
+  /// Lấy điểm người dùng đã đánh giá cho truyện (0 = chưa đánh giá)
+  static Future<int> getUserRating(String storyId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final ratingsJson = prefs.getString(_storyRatingsKey) ?? '{}';
+    final Map<String, dynamic> ratings =
+        json.decode(ratingsJson) as Map<String, dynamic>;
+    return (ratings[storyId] as int?) ?? 0;
+  }
+
+  /// Người dùng đánh giá truyện (stars: 1-5, 0 = bỏ đánh giá)
+  static Future<Story> rateStory(String storyId, int stars) async {
+    assert(stars >= 0 && stars <= 5);
+    final prefs = await SharedPreferences.getInstance();
+
+    // Lưu đánh giá của user
+    final ratingsJson = prefs.getString(_storyRatingsKey) ?? '{}';
+    final Map<String, dynamic> ratings =
+        json.decode(ratingsJson) as Map<String, dynamic>;
+    final int oldRating = (ratings[storyId] as int?) ?? 0;
+
+    if (stars == 0) {
+      ratings.remove(storyId);
+    } else {
+      ratings[storyId] = stars;
+    }
+    await prefs.setString(_storyRatingsKey, json.encode(ratings));
+
+    // Cập nhật rating trong story
+    final stories = await fetchPersonalStories();
+    Story? target;
+    for (final s in stories) {
+      if (s.id == storyId) {
+        target = s;
+        break;
+      }
+    }
+    if (target == null) return Story(id: storyId, title: '');
+
+    double currentTotal = target.rating * target.ratingCount;
+    int newCount = target.ratingCount;
+
+    if (oldRating > 0) {
+      // Bỏ đánh giá cũ
+      currentTotal -= oldRating;
+      newCount = (newCount - 1).clamp(0, 999999);
+    }
+    if (stars > 0) {
+      currentTotal += stars;
+      newCount += 1;
+    }
+
+    final newRating = newCount > 0 ? currentTotal / newCount : 0.0;
+    final updated = target.copyWith(
+      rating: newRating,
+      ratingCount: newCount,
+    );
+    await updateLocalStory(updated);
+    return updated;
   }
 }

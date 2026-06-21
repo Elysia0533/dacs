@@ -23,7 +23,7 @@ class VBookFirebaseConfig {
   static const String adminEmailsRaw = String.fromEnvironment(
     'VBOOK_ADMIN_EMAILS',
   );
-  static const String defaultAdminEmailsRaw = 'vglduc25@gmail.com';
+  static const String defaultAdminEmailsRaw = 'vglduc25@gmail.com,admin@example.com';
 
   static bool get isConfigured =>
       apiKey.isNotEmpty &&

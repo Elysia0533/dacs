@@ -16,6 +16,8 @@ class Story {
   final String driveFileId;
   final bool isFromDrive;
   final String fileType;
+  final double rating;       // Điểm trung bình (0.0 - 5.0)
+  final int ratingCount;     // Tổng số lượt đánh giá
 
   Story({
     required this.id,
@@ -35,6 +37,8 @@ class Story {
     this.driveFileId = "",
     this.isFromDrive = false,
     this.fileType = "",
+    this.rating = 0.0,
+    this.ratingCount = 0,
   });
 
   factory Story.fromJson(Map<String, dynamic> json) {
@@ -60,6 +64,8 @@ class Story {
       driveFileId: json['driveFileId'] ?? '',
       isFromDrive: json['isFromDrive'] ?? false,
       fileType: json['fileType'] ?? '',
+      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      ratingCount: json['ratingCount'] ?? 0,
     );
   }
 
@@ -82,6 +88,8 @@ class Story {
       'driveFileId': driveFileId,
       'isFromDrive': isFromDrive,
       'fileType': fileType,
+      'rating': rating,
+      'ratingCount': ratingCount,
     };
   }
 
@@ -103,6 +111,8 @@ class Story {
     String? driveFileId,
     bool? isFromDrive,
     String? fileType,
+    double? rating,
+    int? ratingCount,
   }) {
     return Story(
       id: id ?? this.id,
@@ -122,6 +132,8 @@ class Story {
       driveFileId: driveFileId ?? this.driveFileId,
       isFromDrive: isFromDrive ?? this.isFromDrive,
       fileType: fileType ?? this.fileType,
+      rating: rating ?? this.rating,
+      ratingCount: ratingCount ?? this.ratingCount,
     );
   }
 }

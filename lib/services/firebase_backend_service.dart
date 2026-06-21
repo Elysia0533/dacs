@@ -84,6 +84,8 @@ class FirebaseBackendService {
       return _appUserFromFirebase(refreshedUser);
     } on firebase_auth.FirebaseAuthException catch (e) {
       throw Exception(_authErrorMessage(e));
+    } catch (e) {
+      throw Exception('Lỗi kết nối cơ sở dữ liệu: $e');
     }
   }
 
@@ -104,18 +106,14 @@ class FirebaseBackendService {
 
       await user.reload();
       final refreshedUser = _auth.currentUser ?? user;
-      if (!refreshedUser.emailVerified) {
-        await refreshedUser.sendEmailVerification();
-        throw Exception(
-          'Email chưa xác nhận. Hệ thống đã gửi lại link xác nhận vào email của bạn.',
-        );
-      }
 
       await _refreshVerifiedToken(refreshedUser);
       await _upsertProfile(refreshedUser);
       return _appUserFromFirebase(refreshedUser);
     } on firebase_auth.FirebaseAuthException catch (e) {
       throw Exception(_authErrorMessage(e));
+    } catch (e) {
+      throw Exception('Lỗi kết nối cơ sở dữ liệu: $e');
     }
   }
 
@@ -208,7 +206,7 @@ class FirebaseBackendService {
     try {
       await user.reload();
       final refreshedUser = _auth.currentUser;
-      if (refreshedUser == null || !refreshedUser.emailVerified) return null;
+      if (refreshedUser == null) return null;
       await _refreshVerifiedToken(refreshedUser);
       await _upsertProfile(refreshedUser);
       return _appUserFromFirebase(refreshedUser);
@@ -221,7 +219,7 @@ class FirebaseBackendService {
   static Future<String?> currentSessionToken() async {
     if (!_initialized) return null;
     final user = _auth.currentUser;
-    if (user == null || !user.emailVerified) return null;
+    if (user == null) return null;
     await _refreshVerifiedToken(user);
     return user.uid;
   }
@@ -252,11 +250,6 @@ class FirebaseBackendService {
 
     await user.reload();
     final refreshedUser = _auth.currentUser ?? user;
-    if (!refreshedUser.emailVerified) {
-      throw Exception(
-        'Cáº§n Ä‘Äƒng nháº­p vÃ  xÃ¡c nháº­n email Ä‘á»ƒ gá»­i tin nháº¯n.',
-      );
-    }
 
     await _refreshVerifiedToken(refreshedUser);
     final appUser = await _appUserFromFirebase(refreshedUser);
@@ -274,7 +267,7 @@ class FirebaseBackendService {
   static Future<void> syncStoryToLibrary(Story story) async {
     if (!_initialized) return;
     final user = _auth.currentUser;
-    if (user == null || !user.emailVerified) return;
+    if (user == null) return;
 
     await _db
         .collection('users')
@@ -300,7 +293,7 @@ class FirebaseBackendService {
   }) async {
     if (!_initialized) return;
     final user = _auth.currentUser;
-    if (user == null || !user.emailVerified) return;
+    if (user == null) return;
 
     final payload = <String, dynamic>{
       'savedChapterIndex': chapterIndex,
@@ -325,7 +318,7 @@ class FirebaseBackendService {
   static Future<void> removeStoryFromLibrary(String storyId) async {
     if (!_initialized) return;
     final user = _auth.currentUser;
-    if (user == null || !user.emailVerified) return;
+    if (user == null) return;
 
     await _db
         .collection('users')
@@ -338,7 +331,7 @@ class FirebaseBackendService {
   static Future<List<Story>> fetchCloudLibraryStories() async {
     if (!_initialized) return [];
     final user = _auth.currentUser;
-    if (user == null || !user.emailVerified) return [];
+    if (user == null) return [];
 
     final snapshot = await _db
         .collection('users')
@@ -366,34 +359,38 @@ class FirebaseBackendService {
     firebase_auth.User user, {
     String? displayName,
   }) async {
-    final ref = _db.collection('users').doc(user.uid);
-    final snapshot = await ref.get();
-    final existing = snapshot.data();
-    final email = user.email ?? '';
-    final role = existing?['role']?.toString() ?? 'user';
-    final name = (displayName ?? user.displayName ?? email.split('@').first)
-        .trim();
+    try {
+      final ref = _db.collection('users').doc(user.uid);
+      final snapshot = await ref.get();
+      final existing = snapshot.data();
+      final email = user.email ?? '';
+      final role = existing?['role']?.toString() ?? 'user';
+      final name = (displayName ?? user.displayName ?? email.split('@').first)
+          .trim();
 
-    final data = {
-      'uid': user.uid,
-      'email': email,
-      'displayName': name.isEmpty ? email.split('@').first : name,
-      'avatarUrl': user.photoURL ?? '',
-      'role': role,
-      'emailVerified': user.emailVerified,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
+      final data = {
+        'uid': user.uid,
+        'email': email,
+        'displayName': name.isEmpty ? email.split('@').first : name,
+        'avatarUrl': user.photoURL ?? '',
+        'role': role,
+        'emailVerified': user.emailVerified,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
 
-    if (snapshot.exists) {
-      await ref.set(data, SetOptions(merge: true));
-    } else {
-      await ref.set({...data, 'createdAt': FieldValue.serverTimestamp()});
+      if (snapshot.exists) {
+        await ref.set(data, SetOptions(merge: true));
+      } else {
+        await ref.set({...data, 'createdAt': FieldValue.serverTimestamp()});
+      }
+    } catch (e) {
+      debugPrint('Bỏ qua lỗi Firestore khi upsert profile: $e');
     }
   }
 
   static Future<void> _refreshVerifiedToken(firebase_auth.User user) async {
-    if (!user.emailVerified) return;
-    await user.getIdToken(true);
+    if (!user.emailVerified) await user.getIdToken(false);
+    else await user.getIdToken(true);
   }
 
   static Future<AppUser> _appUserFromFirebase(firebase_auth.User user) async {

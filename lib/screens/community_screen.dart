@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/community_message.dart';
 import '../services/api_service.dart';
 import '../theme/user_provider.dart';
+import '../utils/profanity_filter.dart';
 import '../widgets/app_state_widgets.dart';
 
 class CommunityScreen extends StatefulWidget {
@@ -339,7 +340,7 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
             Text(
-              message.text,
+              ProfanityFilter.filter(message.text),
               style: TextStyle(color: textColor, fontSize: 14, height: 1.35),
             ),
           ],

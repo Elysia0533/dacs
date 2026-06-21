@@ -24,11 +24,35 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
   int _downloadedBytes = 0;
   int? _downloadTotalBytes;
   late Story _story;
+  int _userRating = 0;     // Số sao user đã chọn (0 = chưa đánh giá)
+  bool _ratingLoading = false;
 
   @override
   void initState() {
     super.initState();
     _story = widget.story;
+    _loadUserRating();
+  }
+
+  Future<void> _loadUserRating() async {
+    final rating = await ApiService.getUserRating(_story.id);
+    if (mounted) setState(() => _userRating = rating);
+  }
+
+  Future<void> _submitRating(int stars) async {
+    if (_ratingLoading) return;
+    setState(() => _ratingLoading = true);
+    try {
+      final newStars = stars == _userRating ? 0 : stars; // tap lại = bỏ đánh giá
+      final updated = await ApiService.rateStory(_story.id, newStars);
+      if (!mounted) return;
+      setState(() {
+        _userRating = newStars;
+        _story = updated;
+      });
+    } finally {
+      if (mounted) setState(() => _ratingLoading = false);
+    }
   }
 
   Future<void> _addToLibrary() async {
@@ -501,6 +525,113 @@ class _StoryDetailScreenState extends State<StoryDetailScreen> {
                     ),
                   ],
                 ],
+              ),
+            ),
+          ),
+
+          // ─── Rating Section ───
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF1E1E1E)
+                      : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.black12,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.star_rounded,
+                          color: Color(0xFFFFC107),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Chấm điểm truyện',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_story.ratingCount > 0)
+                          Text(
+                            '${_story.rating.toStringAsFixed(1)} (${_story.ratingCount} lượt)',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: List.generate(5, (i) {
+                        final starValue = i + 1;
+                        final isSelected = starValue <= _userRating;
+                        return GestureDetector(
+                          onTap: _ratingLoading
+                              ? null
+                              : () => _submitRating(starValue),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            child: Icon(
+                              isSelected
+                                  ? Icons.star_rounded
+                                  : Icons.star_outline_rounded,
+                              key: ValueKey('star_${starValue}_$isSelected'),
+                              size: 44,
+                              color: isSelected
+                                  ? const Color(0xFFFFC107)
+                                  : (isDark
+                                      ? Colors.white30
+                                      : Colors.grey.shade400),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        _userRating == 0
+                            ? 'Chạm vào sao để đánh giá'
+                            : _userRating == 1
+                            ? '⭐ Tệ - Không thực sự hay'
+                            : _userRating == 2
+                            ? '⭐⭐ Bình thường'
+                            : _userRating == 3
+                            ? '⭐⭐⭐ Khá hay'
+                            : _userRating == 4
+                            ? '⭐⭐⭐⭐ Rất hay!'
+                            : '⭐⭐⭐⭐⭐ Tuyệt vời nhất!',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: _userRating > 0
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: _userRating > 0
+                              ? const Color(0xFFFFC107)
+                              : (isDark
+                                  ? Colors.grey.shade500
+                                  : Colors.grey.shade500),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

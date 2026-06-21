@@ -12,7 +12,6 @@ import 'story_detail_screen.dart';
 import 'explore_screen.dart';
 import 'community_screen.dart';
 import 'profile_screen.dart';
-import '../widgets/mini_audio_player.dart';
 
 enum _LibrarySort { recent, title, progress }
 
@@ -862,7 +861,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          const MiniAudioPlayer(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
