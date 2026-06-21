@@ -4,6 +4,7 @@ class AppUser {
   final String displayName;
   final String avatarUrl;
   final String role;
+  final bool emailVerified;
 
   const AppUser({
     required this.id,
@@ -11,9 +12,11 @@ class AppUser {
     required this.displayName,
     this.avatarUrl = '',
     this.role = 'user',
+    this.emailVerified = false,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
+    final rawEmailVerified = json['emailVerified'] ?? json['email_verified'];
     return AppUser(
       id: json['id']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
@@ -24,6 +27,10 @@ class AppUser {
       avatarUrl:
           json['avatarUrl']?.toString() ?? json['avatar_url']?.toString() ?? '',
       role: json['role']?.toString() ?? 'user',
+      emailVerified:
+          rawEmailVerified == true ||
+          rawEmailVerified == 1 ||
+          rawEmailVerified?.toString().toLowerCase() == 'true',
     );
   }
 
@@ -34,6 +41,25 @@ class AppUser {
       'displayName': displayName,
       'avatarUrl': avatarUrl,
       'role': role,
+      'emailVerified': emailVerified,
     };
+  }
+
+  AppUser copyWith({
+    String? id,
+    String? email,
+    String? displayName,
+    String? avatarUrl,
+    String? role,
+    bool? emailVerified,
+  }) {
+    return AppUser(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      displayName: displayName ?? this.displayName,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      role: role ?? this.role,
+      emailVerified: emailVerified ?? this.emailVerified,
+    );
   }
 }

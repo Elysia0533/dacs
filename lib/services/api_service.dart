@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -9,150 +10,52 @@ import 'package:uuid/uuid.dart';
 import 'package:epub_view/epub_view.dart';
 import 'package:epubx/epubx.dart' as epubx;
 import 'package:image/image.dart' as img;
-import 'package:http/http.dart' as http;
+import 'package:xml/xml.dart';
 import '../models/app_user.dart';
 import '../models/community_message.dart';
+import '../models/reading_marker.dart';
 import '../models/story.dart';
+import 'firebase_backend_service.dart';
+import 'google_drive_service.dart';
+
+class RegisterResult {
+  final AppUser user;
+  final bool emailVerificationRequired;
+
+  const RegisterResult({
+    required this.user,
+    required this.emailVerificationRequired,
+  });
+}
+
+class EmailVerificationResult {
+  final bool ok;
+  final bool alreadyVerified;
+
+  const EmailVerificationResult({
+    required this.ok,
+    this.alreadyVerified = false,
+  });
+}
 
 class ApiService {
   static const String _localStoriesKey = 'local_imported_stories';
-  static const String _serverStoriesKey = 'server_stories';
-  static const String _authTokenKey = 'backend_auth_token';
-  static const String _authUserKey = 'backend_auth_user';
-  static const String _apiBaseUrl = String.fromEnvironment(
-    'VBOOK_API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8080',
-  );
+  static const String _serverStoriesKey = 'drive_story_catalog_cache';
+  static const String _serverStoriesCachedAtKey =
+      'drive_story_catalog_cache_at';
+  static const Duration _driveCatalogCacheTtl = Duration(minutes: 30);
+  static const int _maxDriveCoverDownloadBytes = 60 * 1024 * 1024;
+  static const String _authTokenKey = 'firebase_auth_token';
+  static const String _authUserKey = 'firebase_auth_user';
+  static const String _localAccountsKey = 'local_accounts';
+  static const String _localCommunityMessagesKey = 'local_community_messages';
+  static const String _readingHistoryKey = 'reading_history_markers';
+  static const String _readingBookmarksKey = 'reading_bookmarks';
+  static final Map<String, Timer> _scrollSaveTimers = {};
+  static final Map<String, Future<String?>> _driveCoverTasks = {};
+  static final Set<String> _driveCoverMisses = {};
+  static final Set<String> _localCoverRepairMisses = {};
 
-  static String get apiBaseUrl => _apiBaseUrl;
-
-  static Uri _apiUri(String path, [Map<String, String>? queryParameters]) {
-    final base = Uri.parse(_apiBaseUrl);
-    final basePath = base.path.endsWith('/')
-        ? base.path.substring(0, base.path.length - 1)
-        : base.path;
-    final endpoint = path.startsWith('/') ? path : '/$path';
-    return base.replace(
-      path: '$basePath$endpoint',
-      queryParameters: queryParameters,
-    );
-  }
-
-  static Future<dynamic> _request(
-    String method,
-    String path, {
-    Map<String, dynamic>? body,
-    Map<String, String>? queryParameters,
-    bool authenticated = false,
-  }) async {
-    final headers = <String, String>{
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    };
-
-    if (authenticated) {
-      final token = await getSavedAuthToken();
-      if (token == null || token.isEmpty) {
-        throw Exception('Cần đăng nhập để gọi API này');
-      }
-      headers['Authorization'] = 'Bearer $token';
-    }
-
-    final uri = _apiUri(path, queryParameters);
-    final encodedBody = body == null ? null : json.encode(body);
-
-    late final http.Response response;
-    try {
-      response = switch (method) {
-        'GET' =>
-          await http
-              .get(uri, headers: headers)
-              .timeout(const Duration(seconds: 12)),
-        'POST' =>
-          await http
-              .post(uri, headers: headers, body: encodedBody)
-              .timeout(const Duration(seconds: 12)),
-        'PUT' =>
-          await http
-              .put(uri, headers: headers, body: encodedBody)
-              .timeout(const Duration(seconds: 12)),
-        'PATCH' =>
-          await http
-              .patch(uri, headers: headers, body: encodedBody)
-              .timeout(const Duration(seconds: 12)),
-        'DELETE' =>
-          await http
-              .delete(uri, headers: headers)
-              .timeout(const Duration(seconds: 12)),
-        _ => throw Exception('HTTP method không hỗ trợ: $method'),
-      };
-    } on TimeoutException catch (e) {
-      throw Exception('Không kết nối được backend tại $_apiBaseUrl: $e');
-    } on http.ClientException catch (e) {
-      throw Exception('Không kết nối được backend tại $_apiBaseUrl: $e');
-    }
-
-    final dynamic responseBody;
-    try {
-      responseBody = response.body.isEmpty
-          ? <String, dynamic>{}
-          : json.decode(utf8.decode(response.bodyBytes));
-    } on FormatException catch (e) {
-      throw Exception('Phản hồi backend không phải JSON hợp lệ: $e');
-    }
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return responseBody;
-    }
-
-    if (responseBody is Map && responseBody['error'] != null) {
-      throw Exception(responseBody['error']);
-    }
-    throw Exception('Backend trả về HTTP ${response.statusCode}');
-  }
-
-  static Story _storyFromBackendJson(Map<String, dynamic> json) {
-    final driveFileId = json['driveFileId']?.toString() ?? '';
-    return Story(
-      id: json['id']?.toString() ?? '',
-      title: json['title']?.toString() ?? '',
-      titleEng: json['titleEng']?.toString() ?? '',
-      description: json['description']?.toString() ?? '',
-      author: json['author']?.toString() ?? '',
-      genres:
-          (json['genres'] as List<dynamic>?)
-              ?.map((genre) => genre.toString())
-              .toList() ??
-          [],
-      totalChapters: json['totalChapters'] is int
-          ? json['totalChapters'] as int
-          : int.tryParse(json['totalChapters']?.toString() ?? '') ?? 1,
-      iconUrl: json['iconUrl']?.toString() ?? '',
-      driveFileId: driveFileId,
-      isFromDrive: driveFileId.isNotEmpty,
-      isLocal: false,
-    );
-  }
-
-  static Map<String, dynamic> _storyToBackendPayload(Story story) {
-    final fileType = story.localPath.isNotEmpty
-        ? story.localPath.split('.').last.toLowerCase()
-        : '';
-    return {
-      'title': story.title,
-      'titleEng': story.titleEng,
-      'author': story.author,
-      'description': story.description,
-      'genres': story.genres,
-      'totalChapters': story.totalChapters,
-      'iconUrl': story.iconUrl.startsWith('http') ? story.iconUrl : '',
-      'driveFileId': story.driveFileId,
-      'fileType': fileType,
-      'isPublished': true,
-    };
-  }
-
-  // Trích xuất metadata EPUB: title, author, genres (subjects), description, coverPath
   static Future<Map<String, dynamic>> extractEpubMetadata(
     String filePath,
   ) async {
@@ -160,7 +63,6 @@ class ApiService {
       final file = File(filePath);
       final bytes = await file.readAsBytes();
 
-      // Dùng epubx để lấy đầy đủ schema metadata
       final book = await epubx.EpubReader.readBook(bytes);
       final meta = book.Schema?.Package?.Metadata;
 
@@ -171,15 +73,12 @@ class ApiService {
       final chapterCount = _countReadableChapters(book.Chapters ?? []);
 
       if (meta != null) {
-        // Subjects = thể loại
         if (meta.Subjects != null && meta.Subjects!.isNotEmpty) {
           genres = List<String>.from(meta.Subjects!);
         }
-        // Description
         if (meta.Description != null && meta.Description!.isNotEmpty) {
           description = meta.Description!;
         }
-        // Author (dự phòng nếu book.Author trống)
         if (author.isEmpty &&
             meta.Creators != null &&
             meta.Creators!.isNotEmpty) {
@@ -187,18 +86,12 @@ class ApiService {
         }
       }
 
-      // Lấy ảnh bìa từ epub_view (vì epubx không decode hình)
       String coverPath = '';
       try {
-        final document = await EpubDocument.openData(bytes);
-        if (document.CoverImage != null) {
-          final directory = await getApplicationDocumentsDirectory();
-          final coverFileName = 'cover_${const Uuid().v4()}.jpg';
-          final coverFile = File('${directory.path}/$coverFileName');
-          final jpgBytes = img.encodeJpg(document.CoverImage!);
-          await coverFile.writeAsBytes(jpgBytes);
-          coverPath = coverFile.path;
-        }
+        final directory = await getApplicationDocumentsDirectory();
+        final coverFileName = 'cover_${const Uuid().v4()}.jpg';
+        final coverFile = File('${directory.path}/$coverFileName');
+        coverPath = await _writeEpubCover(bytes, coverFile);
       } catch (_) {}
 
       return {
@@ -215,7 +108,297 @@ class ApiService {
     }
   }
 
-  // Lấy danh sách truyện trong Thư viện cá nhân
+  static Future<String?> getCachedDriveCoverPath({
+    required String driveFileId,
+    required String fileType,
+  }) async {
+    final normalizedType = fileType.trim().toLowerCase();
+    final id = driveFileId.trim();
+    if (id.isEmpty || normalizedType != 'epub') return null;
+    if (_driveCoverMisses.contains(id)) return null;
+
+    final directory = await getApplicationDocumentsDirectory();
+    final coverDirectory = Directory('${directory.path}/drive_covers');
+    await coverDirectory.create(recursive: true);
+    final safeId = id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final coverFile = File('${coverDirectory.path}/$safeId.jpg');
+    if (await coverFile.exists() && await coverFile.length() > 0) {
+      return coverFile.path;
+    }
+
+    return _driveCoverTasks.putIfAbsent(id, () async {
+      try {
+        final bytes = await GoogleDriveService.downloadFileBytes(
+          id,
+          maxBytes: _maxDriveCoverDownloadBytes,
+        );
+        final savedPath = await _writeEpubCover(bytes, coverFile);
+        if (savedPath.isEmpty) {
+          _driveCoverMisses.add(id);
+          return null;
+        }
+        return savedPath;
+      } catch (e) {
+        debugPrint('Khong the trich bia EPUB tu Drive: $e');
+        _driveCoverMisses.add(id);
+        return null;
+      } finally {
+        _driveCoverTasks.remove(id);
+      }
+    });
+  }
+
+  static Future<String> _writeEpubCover(
+    Uint8List bytes,
+    File outputFile,
+  ) async {
+    final coverBytes = await _extractEpubCoverJpgBytes(bytes);
+    if (coverBytes == null || coverBytes.isEmpty) return '';
+
+    await outputFile.parent.create(recursive: true);
+    await outputFile.writeAsBytes(coverBytes, flush: true);
+    return outputFile.path;
+  }
+
+  static Future<Uint8List?> _extractEpubCoverJpgBytes(Uint8List bytes) async {
+    try {
+      final document = await EpubDocument.openData(bytes);
+      final coverImage = document.CoverImage;
+      if (coverImage != null) {
+        return Uint8List.fromList(img.encodeJpg(coverImage, quality: 88));
+      }
+    } catch (_) {}
+
+    final rawCoverBytes = _extractEpubCoverBytesFromArchive(bytes);
+    if (rawCoverBytes == null || rawCoverBytes.isEmpty) return null;
+
+    final decodedImage = img.decodeImage(rawCoverBytes);
+    if (decodedImage == null) return null;
+    return Uint8List.fromList(img.encodeJpg(decodedImage, quality: 88));
+  }
+
+  static Uint8List? _extractEpubCoverBytesFromArchive(Uint8List bytes) {
+    try {
+      final archive = ZipDecoder().decodeBytes(bytes, verify: false);
+      final containerFile = _findArchiveFile(archive, 'META-INF/container.xml');
+      String? opfPath;
+
+      if (containerFile != null) {
+        final containerText = _archiveFileText(containerFile);
+        final containerDocument = XmlDocument.parse(containerText);
+        for (final rootFile in containerDocument.findAllElements('rootfile')) {
+          final fullPath = rootFile.getAttribute('full-path')?.trim();
+          if (fullPath != null && fullPath.isNotEmpty) {
+            opfPath = _normalizeZipPath(fullPath);
+            break;
+          }
+        }
+      }
+
+      opfPath ??= archive.files
+          .map((file) => _normalizeZipPath(file.name))
+          .firstWhere(
+            (name) => name.toLowerCase().endsWith('.opf'),
+            orElse: () => '',
+          );
+      if (opfPath.isEmpty) return null;
+
+      final opfFile = _findArchiveFile(archive, opfPath);
+      if (opfFile == null) return null;
+
+      final opfText = _archiveFileText(opfFile);
+      final opfDocument = XmlDocument.parse(opfText);
+      final opfBasePath = _zipDirName(opfPath);
+      final manifestItems = opfDocument.findAllElements('item').toList();
+      final coverCandidates = <String>[];
+
+      String? coverId;
+      for (final meta in opfDocument.findAllElements('meta')) {
+        final name = meta.getAttribute('name')?.trim().toLowerCase();
+        if (name == 'cover') {
+          coverId = meta.getAttribute('content')?.trim();
+          break;
+        }
+      }
+
+      if (coverId != null && coverId.isNotEmpty) {
+        final coverItem = manifestItems.cast<XmlElement?>().firstWhere(
+          (item) => item?.getAttribute('id') == coverId,
+          orElse: () => null,
+        );
+        _addManifestCoverCandidate(coverCandidates, opfBasePath, coverItem);
+      }
+
+      for (final item in manifestItems) {
+        final properties = item.getAttribute('properties') ?? '';
+        if (properties.split(RegExp(r'\s+')).contains('cover-image')) {
+          _addManifestCoverCandidate(coverCandidates, opfBasePath, item);
+        }
+      }
+
+      for (final item in manifestItems) {
+        final href = item.getAttribute('href') ?? '';
+        final mediaType = item.getAttribute('media-type') ?? '';
+        if (_looksLikeCoverImage(href, mediaType)) {
+          _addManifestCoverCandidate(coverCandidates, opfBasePath, item);
+        }
+      }
+
+      for (final item in manifestItems) {
+        final href = item.getAttribute('href') ?? '';
+        final mediaType = item.getAttribute('media-type') ?? '';
+        if (mediaType.contains('xhtml') &&
+            href.toLowerCase().contains('cover')) {
+          final coverPagePath = _resolveZipPath(opfBasePath, href);
+          final imagePath = _readCoverImagePathFromXhtml(
+            archive,
+            coverPagePath,
+          );
+          if (imagePath != null) coverCandidates.add(imagePath);
+        }
+      }
+
+      for (final item in manifestItems) {
+        final href = item.getAttribute('href') ?? '';
+        final mediaType = item.getAttribute('media-type') ?? '';
+        if (_isImageManifestItem(href, mediaType)) {
+          _addManifestCoverCandidate(coverCandidates, opfBasePath, item);
+        }
+      }
+
+      final seen = <String>{};
+      for (final candidate in coverCandidates) {
+        final normalized = _normalizeZipPath(candidate);
+        if (normalized.isEmpty || !seen.add(normalized)) continue;
+        final file = _findArchiveFile(archive, normalized);
+        if (file == null || file.isFile == false || file.size <= 0) continue;
+        return Uint8List.fromList(file.content as List<int>);
+      }
+    } catch (e) {
+      debugPrint('Khong the doc cover EPUB thu cong: $e');
+    }
+
+    return null;
+  }
+
+  static void _addManifestCoverCandidate(
+    List<String> candidates,
+    String opfBasePath,
+    XmlElement? item,
+  ) {
+    final href = item?.getAttribute('href')?.trim();
+    if (href == null || href.isEmpty) return;
+    candidates.add(_resolveZipPath(opfBasePath, href));
+  }
+
+  static String? _readCoverImagePathFromXhtml(
+    Archive archive,
+    String xhtmlPath,
+  ) {
+    final xhtmlFile = _findArchiveFile(archive, xhtmlPath);
+    if (xhtmlFile == null) return null;
+
+    try {
+      final document = XmlDocument.parse(_archiveFileText(xhtmlFile));
+      for (final image in document.findAllElements('img')) {
+        final src = image.getAttribute('src')?.trim();
+        if (src != null && src.isNotEmpty) {
+          return _resolveZipPath(_zipDirName(xhtmlPath), src);
+        }
+      }
+      for (final image in document.findAllElements('image')) {
+        final src =
+            image.getAttribute('href') ??
+            image.getAttribute('xlink:href') ??
+            image.getAttribute('src');
+        if (src != null && src.trim().isNotEmpty) {
+          return _resolveZipPath(_zipDirName(xhtmlPath), src.trim());
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  static bool _looksLikeCoverImage(String href, String mediaType) {
+    if (!_isImageManifestItem(href, mediaType)) return false;
+    final name = _zipBaseName(href).toLowerCase();
+    return name.startsWith('cover.') ||
+        name.startsWith('folder.') ||
+        name.startsWith('poster.') ||
+        name.startsWith('front.') ||
+        name.contains('cover') ||
+        name.contains('poster');
+  }
+
+  static bool _isImageManifestItem(String href, String mediaType) {
+    final lowerHref = href.toLowerCase();
+    final lowerMediaType = mediaType.toLowerCase();
+    return lowerMediaType.startsWith('image/') ||
+        lowerHref.endsWith('.jpg') ||
+        lowerHref.endsWith('.jpeg') ||
+        lowerHref.endsWith('.png') ||
+        lowerHref.endsWith('.webp');
+  }
+
+  static ArchiveFile? _findArchiveFile(Archive archive, String path) {
+    final normalizedPath = _normalizeZipPath(path).toLowerCase();
+    for (final file in archive.files) {
+      if (_normalizeZipPath(file.name).toLowerCase() == normalizedPath) {
+        return file;
+      }
+    }
+    return null;
+  }
+
+  static String _archiveFileText(ArchiveFile file) {
+    return utf8.decode(file.content as List<int>, allowMalformed: true);
+  }
+
+  static String _resolveZipPath(String basePath, String href) {
+    final cleanHref = Uri.decodeFull(
+      href.split('#').first.split('?').first,
+    ).replaceAll('\\', '/');
+    if (cleanHref.startsWith('/')) {
+      return _normalizeZipPath(cleanHref.substring(1));
+    }
+
+    final parts = <String>[
+      ..._normalizeZipPath(
+        basePath,
+      ).split('/').where((part) => part.isNotEmpty),
+      ...cleanHref.split('/'),
+    ];
+    final normalized = <String>[];
+    for (final part in parts) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (normalized.isNotEmpty) normalized.removeLast();
+      } else {
+        normalized.add(part);
+      }
+    }
+    return normalized.join('/');
+  }
+
+  static String _normalizeZipPath(String value) {
+    return value.replaceAll('\\', '/').replaceFirst(RegExp(r'^/+'), '');
+  }
+
+  static String _zipDirName(String path) {
+    final normalized = _normalizeZipPath(path);
+    final index = normalized.lastIndexOf('/');
+    if (index == -1) return '';
+    return normalized.substring(0, index);
+  }
+
+  static String _zipBaseName(String path) {
+    final normalized = _normalizeZipPath(path);
+    final index = normalized.lastIndexOf('/');
+    if (index == -1) return normalized;
+    return normalized.substring(index + 1);
+  }
+
   static int _countReadableChapters(List<epubx.EpubChapter> chapters) {
     var count = 0;
     for (final chapter in chapters) {
@@ -233,61 +416,119 @@ class ApiService {
   static Future<List<Story>> fetchPersonalStories() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
-    return localStoriesJson.map((s) => Story.fromJson(json.decode(s))).toList();
+    final stories = localStoriesJson
+        .map((s) => Story.fromJson(json.decode(s)))
+        .toList();
+    return _repairMissingLocalEpubCovers(prefs, stories);
   }
 
-  // Lấy danh sách truyện từ backend thật, có cache local dự phòng.
+  static Future<List<Story>> _repairMissingLocalEpubCovers(
+    SharedPreferences prefs,
+    List<Story> stories,
+  ) async {
+    var changed = false;
+    final repairedStories = <Story>[];
+
+    for (final story in stories) {
+      var repairedStory = story;
+      if (await _shouldRepairLocalEpubCover(story)) {
+        try {
+          final metadata = await extractEpubMetadata(story.localPath);
+          final coverPath = metadata['coverPath'];
+          if (coverPath is String && coverPath.isNotEmpty) {
+            repairedStory = story.copyWith(iconUrl: coverPath);
+            changed = true;
+          } else {
+            _localCoverRepairMisses.add(story.localPath);
+          }
+        } catch (e) {
+          debugPrint('Khong the khoi phuc bia EPUB local: $e');
+          _localCoverRepairMisses.add(story.localPath);
+        }
+      }
+      repairedStories.add(repairedStory);
+    }
+
+    if (changed) {
+      await prefs.setStringList(
+        _localStoriesKey,
+        repairedStories.map((story) => json.encode(story.toJson())).toList(),
+      );
+    }
+
+    return repairedStories;
+  }
+
+  static Future<bool> _shouldRepairLocalEpubCover(Story story) async {
+    final localPath = story.localPath.trim();
+    if (localPath.isEmpty || _localCoverRepairMisses.contains(localPath)) {
+      return false;
+    }
+
+    final fileType = story.fileType.trim().toLowerCase();
+    final isEpub =
+        fileType == 'epub' || localPath.toLowerCase().endsWith('.epub');
+    if (!isEpub || !await File(localPath).exists()) return false;
+
+    final iconPath = story.iconUrl.trim();
+    if (iconPath.isEmpty || iconPath.startsWith('assets/')) return true;
+    if (iconPath.startsWith('http')) return false;
+    return !await File(iconPath).exists();
+  }
+
   static Future<List<Story>> fetchServerStories() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String> serverStoriesJson =
-        prefs.getStringList(_serverStoriesKey) ?? [];
+    return _fetchDriveStoriesAndCache(useFreshCache: true);
+  }
+
+  static Future<List<Story>> _fetchDriveStoriesAndCache({
+    String? folderUrl,
+    bool useFreshCache = false,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedStoriesJson = prefs.getStringList(_serverStoriesKey) ?? [];
+
+    if (folderUrl == null && useFreshCache && cachedStoriesJson.isNotEmpty) {
+      final cachedAtMillis = prefs.getInt(_serverStoriesCachedAtKey) ?? 0;
+      final cachedAt = DateTime.fromMillisecondsSinceEpoch(cachedAtMillis);
+      final isFresh =
+          DateTime.now().difference(cachedAt) < _driveCatalogCacheTtl;
+      if (isFresh) {
+        return _decodeStoryCache(cachedStoriesJson);
+      }
+    }
 
     try {
-      return await _fetchBackendStoriesAndCache();
+      final items = folderUrl == null
+          ? await GoogleDriveService.fetchStoriesFromConfiguredFolder()
+          : await GoogleDriveService.fetchStoriesFromFolders(
+              GoogleDriveService.parseFolderInputs(folderUrl),
+            );
+      final updatedJson = items.map((s) => json.encode(s.toJson())).toList();
+      await prefs.setStringList(_serverStoriesKey, updatedJson);
+      await prefs.setInt(
+        _serverStoriesCachedAtKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      return items;
     } catch (e) {
-      debugPrint('Lỗi tải truyện từ backend: $e');
-      if (serverStoriesJson.isNotEmpty) {
-        return serverStoriesJson
-            .map((s) => Story.fromJson(json.decode(s)))
-            .toList();
+      debugPrint('Không thể tải danh sách truyện từ Drive: $e');
+      if (cachedStoriesJson.isNotEmpty) {
+        return _decodeStoryCache(cachedStoriesJson);
       }
       rethrow;
     }
   }
 
-  static Future<List<Story>> _fetchBackendStoriesAndCache() async {
-    final data = await _request(
-      'GET',
-      '/stories',
-      queryParameters: {'limit': '100'},
-    );
-    final items = (data['items'] as List<dynamic>? ?? [])
-        .whereType<Map>()
-        .map((item) => _storyFromBackendJson(Map<String, dynamic>.from(item)))
-        .toList();
-
-    final prefs = await SharedPreferences.getInstance();
-    final updatedJson = items.map((s) => json.encode(s.toJson())).toList();
-    await prefs.setStringList(_serverStoriesKey, updatedJson);
-    return items;
+  static List<Story> _decodeStoryCache(List<String> storiesJson) {
+    return storiesJson.map((s) => Story.fromJson(json.decode(s))).toList();
   }
 
-  // Admin: tải lại danh sách truyện từ backend thật.
   static Future<List<Story>> refreshServerStories() async {
-    return _fetchBackendStoriesAndCache();
+    return _fetchDriveStoriesAndCache();
   }
 
-  // Admin thêm truyện mới vào backend.
-  static Future<void> addServerStories(List<Story> newStories) async {
-    for (final story in newStories) {
-      await _request(
-        'POST',
-        '/stories',
-        body: _storyToBackendPayload(story),
-        authenticated: true,
-      );
-    }
-    await _fetchBackendStoriesAndCache();
+  static Future<List<Story>> fetchDriveStoriesFromFolder(String folderUrl) {
+    return _fetchDriveStoriesAndCache(folderUrl: folderUrl);
   }
 
   static Future<String?> getSavedAuthToken() async {
@@ -308,48 +549,171 @@ class ApiService {
     await prefs.setString(_authUserKey, json.encode(user.toJson()));
   }
 
-  static Future<AppUser> registerWithBackend({
+  static Future<void> mergeCloudLibraryIntoLocal() async {
+    try {
+      final cloudStories =
+          await FirebaseBackendService.fetchCloudLibraryStories();
+      if (cloudStories.isEmpty) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
+      final localStories = localStoriesJson
+          .map((s) => Story.fromJson(json.decode(s)))
+          .toList();
+
+      for (final cloudStory in cloudStories.reversed) {
+        final exists = localStories.any((story) {
+          final sameId = story.id == cloudStory.id;
+          final sameDriveFile =
+              cloudStory.driveFileId.isNotEmpty &&
+              story.driveFileId == cloudStory.driveFileId;
+          return sameId || sameDriveFile;
+        });
+        if (!exists) {
+          localStories.insert(0, cloudStory);
+        }
+      }
+
+      await prefs.setStringList(
+        _localStoriesKey,
+        localStories.map((story) => json.encode(story.toJson())).toList(),
+      );
+    } catch (e) {
+      debugPrint('Không thể tải thư viện đồng bộ về máy: $e');
+    }
+  }
+
+  static Future<RegisterResult> registerWithBackend({
     required String email,
     required String password,
     required String displayName,
   }) async {
-    final data = await _request(
-      'POST',
-      '/auth/register',
-      body: {'email': email, 'password': password, 'displayName': displayName},
+    if (!FirebaseBackendService.isInitialized) {
+      final user = await _registerLocalAccount(
+        email: email,
+        password: password,
+        displayName: displayName,
+      );
+      return RegisterResult(user: user, emailVerificationRequired: false);
+    }
+
+    final user = await FirebaseBackendService.register(
+      email: email,
+      password: password,
+      displayName: displayName,
     );
-    final user = AppUser.fromJson(
-      Map<String, dynamic>.from(data['user'] as Map),
+    return RegisterResult(
+      user: user,
+      emailVerificationRequired: !user.emailVerified,
     );
-    await _saveAuthSession(user, data['token']?.toString() ?? '');
+  }
+
+  static Future<AppUser> verifyEmailWithBackend({
+    required String email,
+    required String code,
+  }) async {
+    if (!FirebaseBackendService.isInitialized) {
+      final user = await getSavedUser();
+      if (user == null || user.email.toLowerCase() != email.toLowerCase()) {
+        throw Exception('Hãy đăng nhập lại bằng email vừa đăng ký.');
+      }
+      return user;
+    }
+
+    final user = await FirebaseBackendService.confirmEmailVerified(
+      email: email,
+    );
+    await _saveAuthSession(user, user.id);
     return user;
+  }
+
+  static Future<EmailVerificationResult> resendVerificationCode({
+    required String email,
+  }) async {
+    if (!FirebaseBackendService.isInitialized) {
+      return const EmailVerificationResult(ok: true, alreadyVerified: true);
+    }
+
+    await FirebaseBackendService.resendVerificationEmail(email: email);
+    return const EmailVerificationResult(ok: true);
   }
 
   static Future<AppUser> loginWithBackend({
     required String email,
     required String password,
   }) async {
-    final data = await _request(
-      'POST',
-      '/auth/login',
-      body: {'email': email, 'password': password},
+    if (!FirebaseBackendService.isInitialized) {
+      return _loginLocalAccount(email: email, password: password);
+    }
+
+    final user = await FirebaseBackendService.login(
+      email: email,
+      password: password,
     );
-    final user = AppUser.fromJson(
-      Map<String, dynamic>.from(data['user'] as Map),
-    );
-    await _saveAuthSession(user, data['token']?.toString() ?? '');
+    await _saveAuthSession(user, user.id);
+    return user;
+  }
+
+  static Future<void> sendPasswordResetEmail({required String email}) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty || !normalizedEmail.contains('@')) {
+      throw Exception('Email không hợp lệ.');
+    }
+
+    if (!FirebaseBackendService.isInitialized) {
+      final exists = await _localAccountExists(normalizedEmail);
+      if (!exists) {
+        throw Exception('Không tìm thấy tài khoản với email này.');
+      }
+      throw Exception(
+        'Bản lưu tài khoản trên thiết bị không hỗ trợ gửi email khôi phục. Hãy dùng cấu hình đồng bộ để khôi phục mật khẩu.',
+      );
+    }
+
+    await FirebaseBackendService.sendPasswordResetEmail(email: normalizedEmail);
+  }
+
+  static Future<AppUser> updateUserProfile({
+    required String displayName,
+    required int avatarColorValue,
+    String avatarUrl = '',
+  }) async {
+    final name = displayName.trim();
+    if (name.isEmpty) {
+      throw Exception('Tên hiển thị không được để trống.');
+    }
+    if (name.length > 30) {
+      throw Exception('Tên hiển thị tối đa 30 ký tự.');
+    }
+
+    final AppUser user;
+    if (!FirebaseBackendService.isInitialized) {
+      user = await _updateLocalAccountProfile(
+        displayName: name,
+        avatarUrl: avatarUrl,
+      );
+    } else {
+      user = await FirebaseBackendService.updateProfile(
+        displayName: name,
+        avatarUrl: avatarUrl,
+      );
+    }
+
+    await _saveAuthSession(user, user.id);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('user_avatar_color', avatarColorValue);
     return user;
   }
 
   static Future<AppUser?> refreshCurrentUser() async {
-    final token = await getSavedAuthToken();
-    if (token == null || token.isEmpty) return null;
+    if (!FirebaseBackendService.isInitialized) {
+      return getSavedUser();
+    }
+
     try {
-      final data = await _request('GET', '/auth/me', authenticated: true);
-      final user = AppUser.fromJson(
-        Map<String, dynamic>.from(data['user'] as Map),
-      );
-      await _saveAuthSession(user, token);
+      final user = await FirebaseBackendService.refreshCurrentUser();
+      if (user == null) return null;
+      await _saveAuthSession(user, user.id);
       return user;
     } catch (e) {
       debugPrint('Không thể làm mới phiên đăng nhập: $e');
@@ -358,55 +722,200 @@ class ApiService {
   }
 
   static Future<void> logoutBackend() async {
+    await FirebaseBackendService.logout();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authTokenKey);
     await prefs.remove(_authUserKey);
   }
 
   static Future<List<CommunityMessage>> fetchCommunityMessages() async {
-    final data = await _request(
-      'GET',
-      '/community/messages',
-      queryParameters: {'limit': '50'},
-    );
-    return (data['items'] as List<dynamic>? ?? [])
-        .whereType<Map>()
-        .map(
-          (item) => CommunityMessage.fromJson(Map<String, dynamic>.from(item)),
-        )
-        .toList();
+    if (!FirebaseBackendService.isInitialized) {
+      return _fetchLocalCommunityMessages();
+    }
+
+    return FirebaseBackendService.fetchCommunityMessages();
   }
 
   static Future<CommunityMessage> sendCommunityMessage(String text) async {
-    final data = await _request(
-      'POST',
-      '/community/messages',
-      body: {'text': text},
-      authenticated: true,
+    if (!FirebaseBackendService.isInitialized) {
+      return _sendLocalCommunityMessage(text);
+    }
+
+    return FirebaseBackendService.sendCommunityMessage(text);
+  }
+
+  static Future<AppUser> _registerLocalAccount({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty || !normalizedEmail.contains('@')) {
+      throw Exception('Email không hợp lệ.');
+    }
+    if (password.length < 6) {
+      throw Exception('Mật khẩu cần ít nhất 6 ký tự.');
+    }
+    if (displayName.trim().isEmpty) {
+      throw Exception('Vui lòng nhập tên hiển thị.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList(_localAccountsKey) ?? [];
+    final decodedAccounts = accounts
+        .map((raw) => json.decode(raw) as Map<String, dynamic>)
+        .toList();
+
+    final exists = decodedAccounts.any(
+      (account) =>
+          account['email']?.toString().toLowerCase() == normalizedEmail,
     );
-    return CommunityMessage.fromJson(
-      Map<String, dynamic>.from(data['message'] as Map),
+    if (exists) {
+      throw Exception('Email này đã được đăng ký.');
+    }
+
+    final user = AppUser(
+      id: 'local_${const Uuid().v4()}',
+      email: normalizedEmail,
+      displayName: displayName.trim(),
+      role: 'user',
+      emailVerified: true,
     );
+
+    decodedAccounts.add({...user.toJson(), 'password': password});
+    await prefs.setStringList(
+      _localAccountsKey,
+      decodedAccounts.map((account) => json.encode(account)).toList(),
+    );
+    await _saveAuthSession(user, user.id);
+    return user;
+  }
+
+  static Future<AppUser> _loginLocalAccount({
+    required String email,
+    required String password,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList(_localAccountsKey) ?? [];
+
+    Map<String, dynamic>? found;
+    for (final rawAccount in accounts) {
+      final account = json.decode(rawAccount) as Map<String, dynamic>;
+      if (account['email']?.toString().toLowerCase() == normalizedEmail) {
+        found = account;
+        break;
+      }
+    }
+
+    if (found == null) {
+      throw Exception('Không tìm thấy tài khoản với email này.');
+    }
+    if (found['password']?.toString() != password) {
+      throw Exception('Mật khẩu không đúng.');
+    }
+
+    final user = AppUser.fromJson(found);
+    await _saveAuthSession(user, user.id);
+    return user;
+  }
+
+  static Future<bool> _localAccountExists(String normalizedEmail) async {
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList(_localAccountsKey) ?? [];
+    return accounts.any((raw) {
+      final account = json.decode(raw) as Map<String, dynamic>;
+      return account['email']?.toString().toLowerCase() == normalizedEmail;
+    });
+  }
+
+  static Future<AppUser> _updateLocalAccountProfile({
+    required String displayName,
+    required String avatarUrl,
+  }) async {
+    final savedUser = await getSavedUser();
+    final token = await getSavedAuthToken();
+    if (savedUser == null || token == null || token.isEmpty) {
+      throw Exception('Cần đăng nhập để chỉnh sửa thông tin cá nhân.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList(_localAccountsKey) ?? [];
+    final decodedAccounts = accounts
+        .map((raw) => json.decode(raw) as Map<String, dynamic>)
+        .toList();
+
+    final index = decodedAccounts.indexWhere(
+      (account) => account['id']?.toString() == savedUser.id,
+    );
+    final updatedUser = savedUser.copyWith(
+      displayName: displayName,
+      avatarUrl: avatarUrl,
+    );
+
+    if (index != -1) {
+      final password = decodedAccounts[index]['password'];
+      decodedAccounts[index] = {...updatedUser.toJson(), 'password': password};
+      await prefs.setStringList(
+        _localAccountsKey,
+        decodedAccounts.map((account) => json.encode(account)).toList(),
+      );
+    }
+
+    await _saveAuthSession(updatedUser, token);
+    return updatedUser;
+  }
+
+  static Future<List<CommunityMessage>> _fetchLocalCommunityMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawMessages = prefs.getStringList(_localCommunityMessagesKey) ?? [];
+    final messages = rawMessages
+        .map(
+          (raw) => CommunityMessage.fromJson(
+            Map<String, dynamic>.from(json.decode(raw) as Map),
+          ),
+        )
+        .toList();
+    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return messages;
+  }
+
+  static Future<CommunityMessage> _sendLocalCommunityMessage(
+    String text,
+  ) async {
+    final user = await getSavedUser();
+    final token = await getSavedAuthToken();
+    if (user == null || token == null || token.isEmpty) {
+      throw Exception('Cần đăng nhập để gửi tin nhắn.');
+    }
+
+    final message = CommunityMessage(
+      id: 'local_${const Uuid().v4()}',
+      userId: user.id,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      text: text,
+      createdAt: DateTime.now().toIso8601String(),
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    final messages = await _fetchLocalCommunityMessages();
+    messages.add(message);
+    final recentMessages = messages.length > 100
+        ? messages.sublist(messages.length - 100)
+        : messages;
+    await prefs.setStringList(
+      _localCommunityMessagesKey,
+      recentMessages.map((item) => json.encode(item.toJson())).toList(),
+    );
+    return message;
   }
 
   static Future<void> _syncStoryToBackendLibrary(Story story) async {
-    final token = await getSavedAuthToken();
-    if (token == null || token.isEmpty) return;
-
     try {
-      await _request(
-        'POST',
-        '/me/library',
-        body: {
-          'storyId': story.id,
-          'localPath': story.localPath,
-          'savedChapterIndex': story.savedChapterIndex,
-          'totalChapters': story.totalChapters,
-        },
-        authenticated: true,
-      );
+      await FirebaseBackendService.syncStoryToLibrary(story);
     } catch (e) {
-      debugPrint('Không thể đồng bộ thư viện lên backend: $e');
+      debugPrint('Không thể đồng bộ thư viện: $e');
     }
   }
 
@@ -414,22 +923,25 @@ class ApiService {
     String storyId,
     int chapterIndex, {
     int? totalChapters,
+    double? scrollOffset,
   }) async {
-    final token = await getSavedAuthToken();
-    if (token == null || token.isEmpty) return;
-
     try {
-      await _request(
-        'PUT',
-        '/me/library/$storyId/progress',
-        body: {
-          'savedChapterIndex': chapterIndex,
-          'totalChapters': totalChapters ?? 1,
-        },
-        authenticated: true,
+      await FirebaseBackendService.syncProgress(
+        storyId,
+        chapterIndex,
+        totalChapters: totalChapters,
+        scrollOffset: scrollOffset,
       );
     } catch (e) {
-      debugPrint('Không thể đồng bộ tiến độ đọc lên backend: $e');
+      debugPrint('Không thể đồng bộ tiến độ đọc: $e');
+    }
+  }
+
+  static Future<void> _removeStoryFromBackendLibrary(String storyId) async {
+    try {
+      await FirebaseBackendService.removeStoryFromLibrary(storyId);
+    } catch (e) {
+      debugPrint('Cannot remove story from synced library: $e');
     }
   }
 
@@ -437,7 +949,6 @@ class ApiService {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
 
-    // Kiểm tra xem đã tồn tại chưa (dựa theo id)
     bool exists = localStoriesJson.any((s) {
       final decoded = json.decode(s);
       final sameId = decoded['id'] == story.id;
@@ -477,6 +988,9 @@ class ApiService {
       final existingStory = localStories[index];
       final savedStory = updatedStory.copyWith(
         id: existingStory.id,
+        iconUrl: updatedStory.iconUrl.isNotEmpty
+            ? updatedStory.iconUrl
+            : existingStory.iconUrl,
         currentChapter: existingStory.currentChapter,
         savedChapterIndex: existingStory.savedChapterIndex > 0
             ? existingStory.savedChapterIndex
@@ -493,7 +1007,6 @@ class ApiService {
     return null;
   }
 
-  // Xóa truyện khỏi thư viện cá nhân
   static Future<void> deleteLocalStory(String storyId) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
@@ -508,8 +1021,9 @@ class ApiService {
     });
     await prefs.setStringList(_localStoriesKey, localStoriesJson);
     await _deleteOwnedStoryFiles(removedStories);
-    // Xóa luôn vị trí cuộn đã lưu
     await prefs.remove('scroll_$storyId');
+    await _removeReadingMarkersForStory(storyId);
+    await _removeStoryFromBackendLibrary(storyId);
   }
 
   static Future<void> _deleteOwnedStoryFiles(
@@ -544,26 +1058,251 @@ class ApiService {
     }
   }
 
-  // Lưu vị trí cuộn (dùng cho TXT reader)
   static Future<void> saveScrollOffset(String storyId, double offset) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('scroll_$storyId', offset);
+    _scrollSaveTimers[storyId]?.cancel();
+    _scrollSaveTimers[storyId] = Timer(
+      const Duration(milliseconds: 600),
+      () async {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setDouble('scroll_$storyId', offset);
+
+          final story = await _findLocalStory(storyId);
+          await _syncProgressToBackend(
+            storyId,
+            story?.savedChapterIndex ?? 0,
+            totalChapters: story?.totalChapters ?? 1,
+            scrollOffset: offset,
+          );
+        } catch (e) {
+          debugPrint('Cannot save scroll offset: $e');
+        }
+      },
+    );
   }
 
-  // Lấy vị trí cuộn đã lưu
+  static Future<Story?> _findLocalStory(String storyId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
+
+    for (final rawStory in localStoriesJson) {
+      final story = Story.fromJson(json.decode(rawStory));
+      if (story.id == storyId) return story;
+    }
+
+    return null;
+  }
+
   static Future<double> getScrollOffset(String storyId) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getDouble('scroll_$storyId') ?? 0.0;
   }
 
-  // Lấy truyện đọc gần nhất (có savedChapterIndex > 0 hoặc có scroll offset)
   static Future<Story?> getLastReadStory() async {
+    final history = await getReadingHistory();
+    if (history.isNotEmpty) {
+      final stories = await fetchPersonalStories();
+      for (final marker in history) {
+        for (final story in stories) {
+          if (story.id == marker.storyId) return story;
+        }
+      }
+    }
+
     final stories = await fetchPersonalStories();
     if (stories.isEmpty) return null;
-    // Ưu tiên truyện có tiến trình (savedChapterIndex > 0)
     final withProgress = stories.where((s) => s.savedChapterIndex > 0).toList();
     if (withProgress.isNotEmpty) return withProgress.first;
     return stories.first;
+  }
+
+  static Future<List<ReadingMarker>> getReadingHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawMarkers = prefs.getStringList(_readingHistoryKey) ?? [];
+    final markers = rawMarkers
+        .map((raw) {
+          try {
+            return ReadingMarker.fromJson(json.decode(raw));
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<ReadingMarker>()
+        .where((marker) => marker.storyId.isNotEmpty)
+        .toList();
+
+    markers.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return markers;
+  }
+
+  static Future<void> recordReadingHistory(
+    Story story, {
+    int chapterIndex = 0,
+    String chapterTitle = '',
+    double scrollOffset = 0,
+  }) async {
+    if (story.id.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final markers = await getReadingHistory();
+    markers.removeWhere((marker) => marker.storyId == story.id);
+
+    final now = DateTime.now();
+    markers.insert(
+      0,
+      _markerFromStory(
+        story,
+        id: story.id,
+        chapterIndex: chapterIndex,
+        chapterTitle: chapterTitle,
+        scrollOffset: scrollOffset,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    final recentMarkers = markers.take(30).toList();
+    await prefs.setStringList(
+      _readingHistoryKey,
+      recentMarkers.map((marker) => json.encode(marker.toJson())).toList(),
+    );
+  }
+
+  static Future<List<ReadingMarker>> getReadingBookmarks({
+    String? storyId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawMarkers = prefs.getStringList(_readingBookmarksKey) ?? [];
+    final markers = rawMarkers
+        .map((raw) {
+          try {
+            return ReadingMarker.fromJson(json.decode(raw));
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<ReadingMarker>()
+        .where((marker) => marker.storyId.isNotEmpty)
+        .where((marker) => storyId == null || marker.storyId == storyId)
+        .toList();
+
+    markers.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return markers;
+  }
+
+  static Future<bool> isBookmarked(
+    String storyId, {
+    int chapterIndex = 0,
+  }) async {
+    final bookmarks = await getReadingBookmarks(storyId: storyId);
+    return bookmarks.any((marker) => marker.chapterIndex == chapterIndex);
+  }
+
+  static Future<bool> toggleBookmark(
+    Story story, {
+    int chapterIndex = 0,
+    String chapterTitle = '',
+    double scrollOffset = 0,
+  }) async {
+    if (story.id.isEmpty) return false;
+
+    final prefs = await SharedPreferences.getInstance();
+    final bookmarks = await getReadingBookmarks();
+    final existingIndex = bookmarks.indexWhere(
+      (marker) =>
+          marker.storyId == story.id && marker.chapterIndex == chapterIndex,
+    );
+
+    if (existingIndex != -1) {
+      bookmarks.removeAt(existingIndex);
+      await prefs.setStringList(
+        _readingBookmarksKey,
+        bookmarks.map((marker) => json.encode(marker.toJson())).toList(),
+      );
+      return false;
+    }
+
+    final now = DateTime.now();
+    bookmarks.insert(
+      0,
+      _markerFromStory(
+        story,
+        id: const Uuid().v4(),
+        chapterIndex: chapterIndex,
+        chapterTitle: chapterTitle,
+        scrollOffset: scrollOffset,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    await prefs.setStringList(
+      _readingBookmarksKey,
+      bookmarks
+          .take(100)
+          .map((marker) => json.encode(marker.toJson()))
+          .toList(),
+    );
+    return true;
+  }
+
+  static Future<void> removeBookmark(String bookmarkId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final bookmarks = await getReadingBookmarks();
+    bookmarks.removeWhere((marker) => marker.id == bookmarkId);
+    await prefs.setStringList(
+      _readingBookmarksKey,
+      bookmarks.map((marker) => json.encode(marker.toJson())).toList(),
+    );
+  }
+
+  static Future<void> _removeReadingMarkersForStory(String storyId) async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in [_readingHistoryKey, _readingBookmarksKey]) {
+      final rawMarkers = prefs.getStringList(key) ?? [];
+      final markers = rawMarkers
+          .map((raw) {
+            try {
+              return ReadingMarker.fromJson(json.decode(raw));
+            } catch (_) {
+              return null;
+            }
+          })
+          .whereType<ReadingMarker>()
+          .where((marker) => marker.storyId != storyId)
+          .toList();
+      await prefs.setStringList(
+        key,
+        markers.map((marker) => json.encode(marker.toJson())).toList(),
+      );
+    }
+  }
+
+  static ReadingMarker _markerFromStory(
+    Story story, {
+    required String id,
+    required int chapterIndex,
+    required String chapterTitle,
+    required double scrollOffset,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) {
+    return ReadingMarker(
+      id: id,
+      storyId: story.id,
+      storyTitle: story.title,
+      chapterTitle: chapterTitle.isNotEmpty
+          ? chapterTitle
+          : 'Chương ${chapterIndex + 1}',
+      iconUrl: story.iconUrl,
+      driveFileId: story.driveFileId,
+      fileType: story.fileType,
+      localPath: story.localPath,
+      chapterIndex: chapterIndex,
+      scrollOffset: scrollOffset,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
   }
 
   static Future<void> saveChapterProgress(
@@ -573,7 +1312,6 @@ class ApiService {
   }) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    // Lưu trong local
     List<String> localStoriesJson = prefs.getStringList(_localStoriesKey) ?? [];
     List<Story> localStories = localStoriesJson
         .map((s) => Story.fromJson(json.decode(s)))
@@ -590,7 +1328,6 @@ class ApiService {
       await prefs.setStringList(_localStoriesKey, updatedJson);
     }
 
-    // Lưu trong server (cho mục Khám phá)
     List<String> serverStoriesJson =
         prefs.getStringList(_serverStoriesKey) ?? [];
     List<Story> serverStories = serverStoriesJson
@@ -615,7 +1352,6 @@ class ApiService {
     );
   }
 
-  // Khởi tạo các file truyện từ assets/offline_stories/
   static Future<void> initOfflineStories() async {
     try {
       final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
@@ -636,13 +1372,11 @@ class ApiService {
         final fileName = assetPath.split('/').last;
         final localFile = File('${directory.path}/$fileName');
 
-        // Tạo title đẹp hơn bằng cách bỏ đuôi file (ví dụ: ThanhXuan_Vol1.epub -> ThanhXuan_Vol1)
         final displayTitle = fileName.replaceAll(
           RegExp(r'\.(epub|pdf|txt)$', caseSensitive: false),
           '',
         );
 
-        // Kiểm tra xem truyện này đã được thêm vào trước đó chưa (tránh copy lại)
         bool exists = localStoriesJson.any((s) {
           final decoded = json.decode(s);
           final sameTitle =
@@ -652,7 +1386,6 @@ class ApiService {
         });
 
         if (!exists) {
-          // Copy từ asset ra bộ nhớ trong
           final byteData = await rootBundle.load(assetPath);
           await localFile.writeAsBytes(
             byteData.buffer.asUint8List(
@@ -702,6 +1435,7 @@ class ApiService {
             localPath: localFile.path,
             isLocal: true,
             iconUrl: coverPath,
+            fileType: fileName.split('.').last.toLowerCase(),
           );
 
           if (fileName.endsWith('.txt')) {
@@ -711,15 +1445,14 @@ class ApiService {
               content: await localFile.readAsString(),
               localPath: localFile.path,
               isLocal: true,
+              fileType: fileName.split('.').last.toLowerCase(),
             );
           }
 
-          // Trực tiếp thêm vào list hiện tại để vòng lặp sau nhận biết
           localStoriesJson.insert(0, json.encode(newStory.toJson()));
         }
       }
 
-      // Lưu lại toàn bộ danh sách cập nhật
       await prefs.setStringList(_localStoriesKey, localStoriesJson);
     } catch (e) {
       debugPrint('Lỗi khởi tạo offline stories: $e');

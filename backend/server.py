@@ -6,10 +6,14 @@ import hmac
 import json
 import os
 import re
+import secrets
 import sqlite3
+import smtplib
 import time
 import uuid
 from datetime import datetime, timezone
+from email.message import EmailMessage
+from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,11 +23,43 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT_DIR = Path(__file__).resolve().parent
 SCHEMA_PATH = ROOT_DIR / "schema.sql"
+
+
+def load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+ENV_FILE = os.environ.get("VBOOK_ENV_FILE", str(ROOT_DIR / ".env"))
+if ENV_FILE != "0":
+    load_env_file(Path(ENV_FILE))
+
 DB_PATH = Path(os.environ.get("VBOOK_DB", ROOT_DIR / "data" / "vbook.db"))
 HOST = os.environ.get("VBOOK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("VBOOK_PORT", "8080"))
 SECRET = os.environ.get("VBOOK_SECRET", "dev-secret-change-me")
 TOKEN_TTL_SECONDS = int(os.environ.get("VBOOK_TOKEN_TTL", str(60 * 60 * 24 * 7)))
+EMAIL_VERIFICATION_TTL_SECONDS = int(
+    os.environ.get("VBOOK_EMAIL_VERIFICATION_TTL", str(15 * 60))
+)
+PUBLIC_BASE_URL = os.environ.get("VBOOK_PUBLIC_BASE_URL", f"http://{HOST}:{PORT}")
+SMTP_HOST = os.environ.get("VBOOK_SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("VBOOK_SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("VBOOK_SMTP_USER", "")
+SMTP_PASS = os.environ.get("VBOOK_SMTP_PASS", "")
+SMTP_FROM = os.environ.get("VBOOK_SMTP_FROM", SMTP_USER or "no-reply@vbook.local")
+SMTP_TLS = os.environ.get("VBOOK_SMTP_TLS", "1") != "0"
+REQUIRE_SMTP = os.environ.get("VBOOK_REQUIRE_SMTP", "0") == "1"
 
 
 def now_iso() -> str:
@@ -124,8 +160,22 @@ def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect_db() as con:
         con.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        run_migrations(con)
         if os.environ.get("VBOOK_SEED_DEMO", "1") != "0":
             seed_demo_stories(con)
+
+
+def run_migrations(con: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(users)")}
+    migrations = {
+        "email_verified": "INTEGER NOT NULL DEFAULT 1",
+        "email_verification_code": "TEXT NOT NULL DEFAULT ''",
+        "email_verification_token": "TEXT NOT NULL DEFAULT ''",
+        "email_verification_expires_at": "INTEGER",
+    }
+    for column, definition in migrations.items():
+        if column not in columns:
+            con.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
 
 
 def seed_demo_stories(con: sqlite3.Connection) -> None:
@@ -193,6 +243,7 @@ def row_to_user(row: sqlite3.Row) -> dict[str, Any]:
         "displayName": row["display_name"],
         "avatarUrl": row["avatar_url"],
         "role": row["role"],
+        "emailVerified": bool(row["email_verified"]),
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
     }
@@ -243,6 +294,89 @@ def row_to_message(row: sqlite3.Row) -> dict[str, Any]:
 
 def normalize_email(value: Any) -> str:
     return str(value or "").strip().lower()
+
+
+def make_verification_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def make_verification_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def verification_expires_at() -> int:
+    return int(time.time()) + EMAIL_VERIFICATION_TTL_SECONDS
+
+
+def verification_link(token: str) -> str:
+    return f"{PUBLIC_BASE_URL.rstrip('/')}/auth/verify-email?token={token}"
+
+
+def send_verification_email(email: str, display_name: str, code: str, token: str) -> bool:
+    link = verification_link(token)
+    if not SMTP_HOST:
+        if REQUIRE_SMTP:
+            raise RuntimeError(
+                "Chua cau hinh VBOOK_SMTP_HOST nen khong the gui email that"
+            )
+        print("")
+        print("==== vBook email verification (dev mode) ====")
+        print(f"To: {email}")
+        print(f"Code: {code}")
+        print(f"Link: {link}")
+        print("Configure VBOOK_SMTP_HOST to send a real email.")
+        print("============================================")
+        print("")
+        return False
+
+    safe_name = display_name or email
+    message = EmailMessage()
+    message["From"] = SMTP_FROM
+    message["To"] = email
+    message["Subject"] = "vBook email verification"
+    message.set_content(
+        "\n".join(
+            [
+                f"Xin chao {safe_name},",
+                "",
+                f"Ma xac nhan vBook cua ban la: {code}",
+                f"Ma het han sau {EMAIL_VERIFICATION_TTL_SECONDS // 60} phut.",
+                "",
+                f"Hoac mo link nay de xac nhan: {link}",
+                "",
+                "Neu ban khong tao tai khoan vBook, hay bo qua email nay.",
+            ]
+        )
+    )
+    message.add_alternative(
+        f"""
+        <html>
+          <body>
+            <p>Xin chao {escape(safe_name)},</p>
+            <p>Ma xac nhan vBook cua ban la:</p>
+            <p style="font-size:24px;font-weight:700;letter-spacing:4px;">{code}</p>
+            <p>Ma het han sau {EMAIL_VERIFICATION_TTL_SECONDS // 60} phut.</p>
+            <p><a href="{escape(link)}">Xac nhan email</a></p>
+            <p>Neu ban khong tao tai khoan vBook, hay bo qua email nay.</p>
+          </body>
+        </html>
+        """,
+        subtype="html",
+    )
+
+    if SMTP_PORT == 465:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
+            if SMTP_USER:
+                smtp.login(SMTP_USER, SMTP_PASS)
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
+            if SMTP_TLS:
+                smtp.starttls()
+            if SMTP_USER:
+                smtp.login(SMTP_USER, SMTP_PASS)
+            smtp.send_message(message)
+    return True
 
 
 def clamp_int(value: Any, default: int, minimum: int, maximum: int) -> int:
@@ -300,6 +434,15 @@ class VBookHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def respond_html(self, status: HTTPStatus, html: str) -> None:
+        body = html.encode("utf-8")
+        self.send_response(status)
+        self.send_cors_headers()
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def parse_json_body(self) -> dict[str, Any]:
         content_length = int(self.headers.get("Content-Length", "0"))
         if content_length == 0:
@@ -334,6 +477,8 @@ class VBookHandler(BaseHTTPRequestHandler):
             ).fetchone()
         if user is None and required:
             raise ApiError(HTTPStatus.UNAUTHORIZED, "Nguoi dung khong ton tai")
+        if user is not None and not bool(user["email_verified"]) and required:
+            raise ApiError(HTTPStatus.FORBIDDEN, "Email chua duoc xac nhan")
         return user
 
     def require_admin(self) -> sqlite3.Row:
@@ -367,6 +512,18 @@ class VBookHandler(BaseHTTPRequestHandler):
 
             if self.command == "POST" and path == "/auth/login":
                 self.login()
+                return
+
+            if self.command == "POST" and path == "/auth/verify-email":
+                self.verify_email()
+                return
+
+            if self.command == "GET" and path == "/auth/verify-email":
+                self.verify_email_link(query)
+                return
+
+            if self.command == "POST" and path == "/auth/resend-verification":
+                self.resend_verification()
                 return
 
             if self.command == "GET" and path == "/auth/me":
@@ -446,39 +603,228 @@ class VBookHandler(BaseHTTPRequestHandler):
             display_name = email.split("@", 1)[0]
 
         created = now_iso()
+        code = make_verification_code()
+        token = make_verification_token()
+        expires_at = verification_expires_at()
+        email_sent = False
         with connect_db() as con:
-            user_count = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-            role = "admin" if user_count == 0 else "user"
-            user_id = make_id("usr")
+            existing = con.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            if existing is not None:
+                if bool(existing["email_verified"]):
+                    raise ApiError(HTTPStatus.CONFLICT, "Email da duoc dang ky")
+                con.execute(
+                    """
+                    UPDATE users
+                    SET display_name = ?, password_hash = ?, avatar_url = ?,
+                        email_verification_code = ?,
+                        email_verification_token = ?,
+                        email_verification_expires_at = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        display_name,
+                        hash_password(password),
+                        str(body.get("avatarUrl") or ""),
+                        code,
+                        token,
+                        expires_at,
+                        created,
+                        existing["id"],
+                    ),
+                )
+                user = con.execute("SELECT * FROM users WHERE id = ?", (existing["id"],)).fetchone()
+            else:
+                user_count = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                role = "admin" if user_count == 0 else "user"
+                user_id = make_id("usr")
+                con.execute(
+                    """
+                    INSERT INTO users (
+                      id, email, password_hash, display_name, avatar_url,
+                      role, email_verified, email_verification_code,
+                      email_verification_token, email_verification_expires_at,
+                      created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        email,
+                        hash_password(password),
+                        display_name,
+                        str(body.get("avatarUrl") or ""),
+                        role,
+                        code,
+                        token,
+                        expires_at,
+                        created,
+                        created,
+                    ),
+                )
+                user = con.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+            assert user is not None
+            try:
+                email_sent = send_verification_email(email, display_name, code, token)
+            except Exception as exc:  # noqa: BLE001 - surface SMTP setup problems clearly.
+                raise ApiError(
+                    HTTPStatus.BAD_GATEWAY,
+                    f"Khong gui duoc email xac nhan: {exc}",
+                ) from exc
+
+        response = {
+            "user": row_to_user(user),
+            "emailVerificationRequired": True,
+            "verificationExpiresInSeconds": EMAIL_VERIFICATION_TTL_SECONDS,
+        }
+        if not email_sent:
+            response["devVerificationCode"] = code
+            response["devVerificationLink"] = verification_link(token)
+        self.respond(HTTPStatus.CREATED, response)
+
+    def verify_email(self) -> None:
+        body = self.parse_json_body()
+        email = normalize_email(body.get("email"))
+        code = str(body.get("code") or "").strip()
+        token = str(body.get("token") or "").strip()
+        user = self._verify_email_record(email=email, code=code, token=token)
+        self.respond(HTTPStatus.OK, {"user": row_to_user(user), "token": create_token(user)})
+
+    def verify_email_link(self, query: dict[str, list[str]]) -> None:
+        token = (query.get("token", [""])[0] or "").strip()
+        try:
+            user = self._verify_email_record(email="", code="", token=token)
+        except ApiError as exc:
+            self.respond_html(
+                exc.status,
+                f"""
+                <!doctype html>
+                <html lang="vi">
+                  <head><meta charset="utf-8"><title>vBook</title></head>
+                  <body style="font-family:Arial,sans-serif;padding:32px;">
+                    <h2>Khong xac nhan duoc email</h2>
+                    <p>{escape(exc.message)}</p>
+                  </body>
+                </html>
+                """,
+            )
+            return
+
+        self.respond_html(
+            HTTPStatus.OK,
+            f"""
+            <!doctype html>
+            <html lang="vi">
+              <head><meta charset="utf-8"><title>vBook</title></head>
+              <body style="font-family:Arial,sans-serif;padding:32px;">
+                <h2>Email da duoc xac nhan</h2>
+                <p>Tai khoan {escape(user["email"])} da san sang dang nhap trong ung dung vBook.</p>
+              </body>
+            </html>
+            """,
+        )
+
+    def resend_verification(self) -> None:
+        body = self.parse_json_body()
+        email = normalize_email(body.get("email"))
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "Email khong hop le")
+
+        code = make_verification_code()
+        token = make_verification_token()
+        expires_at = verification_expires_at()
+        updated = now_iso()
+        email_sent = False
+
+        with connect_db() as con:
+            user = con.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            if user is None:
+                raise ApiError(HTTPStatus.NOT_FOUND, "Email chua dang ky")
+            if bool(user["email_verified"]):
+                self.respond(HTTPStatus.OK, {"ok": True, "alreadyVerified": True})
+                return
+
             con.execute(
                 """
-                INSERT INTO users (
-                  id, email, password_hash, display_name, avatar_url,
-                  role, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                UPDATE users
+                SET email_verification_code = ?,
+                    email_verification_token = ?,
+                    email_verification_expires_at = ?,
+                    updated_at = ?
+                WHERE id = ?
                 """,
-                (
-                    user_id,
-                    email,
-                    hash_password(password),
-                    display_name,
-                    str(body.get("avatarUrl") or ""),
-                    role,
-                    created,
-                    created,
-                ),
+                (code, token, expires_at, updated, user["id"]),
             )
-            user = con.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            user = con.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            assert user is not None
+            try:
+                email_sent = send_verification_email(
+                    email,
+                    user["display_name"],
+                    code,
+                    token,
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise ApiError(
+                    HTTPStatus.BAD_GATEWAY,
+                    f"Khong gui duoc email xac nhan: {exc}",
+                ) from exc
 
-        assert user is not None
-        self.respond(
-            HTTPStatus.CREATED,
-            {
-                "user": row_to_user(user),
-                "token": create_token(user),
-            },
-        )
+        response = {
+            "ok": True,
+            "emailVerificationRequired": True,
+            "verificationExpiresInSeconds": EMAIL_VERIFICATION_TTL_SECONDS,
+        }
+        if not email_sent:
+            response["devVerificationCode"] = code
+            response["devVerificationLink"] = verification_link(token)
+        self.respond(HTTPStatus.OK, response)
+
+    def _verify_email_record(self, email: str, code: str, token: str) -> sqlite3.Row:
+        if token:
+            lookup_sql = "SELECT * FROM users WHERE email_verification_token = ?"
+            lookup_args = (token,)
+        else:
+            if not email or not code:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "Can nhap email va ma xac nhan")
+            lookup_sql = "SELECT * FROM users WHERE email = ?"
+            lookup_args = (email,)
+
+        updated = now_iso()
+        with connect_db() as con:
+            user = con.execute(lookup_sql, lookup_args).fetchone()
+            if user is None:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "Ma xac nhan khong dung")
+            if bool(user["email_verified"]):
+                raise ApiError(HTTPStatus.CONFLICT, "Email da xac nhan. Hay dang nhap.")
+            if not token and not hmac.compare_digest(
+                str(user["email_verification_code"] or ""),
+                code,
+            ):
+                raise ApiError(HTTPStatus.BAD_REQUEST, "Ma xac nhan khong dung")
+            expires_at = int(user["email_verification_expires_at"] or 0)
+            if expires_at and expires_at < int(time.time()):
+                raise ApiError(HTTPStatus.GONE, "Ma xac nhan da het han")
+
+            user_count = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            con.execute(
+                """
+                UPDATE users
+                SET email_verified = 1,
+                    email_verification_code = '',
+                    email_verification_token = '',
+                    email_verification_expires_at = NULL,
+                    role = CASE WHEN ? = 1 THEN 'admin' ELSE role END,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (user_count == 1, updated, user["id"]),
+            )
+            verified_user = con.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+
+        assert verified_user is not None
+        return verified_user
 
     def login(self) -> None:
         body = self.parse_json_body()
@@ -490,6 +836,11 @@ class VBookHandler(BaseHTTPRequestHandler):
 
         if user is None or not verify_password(password, user["password_hash"]):
             raise ApiError(HTTPStatus.UNAUTHORIZED, "Email hoac mat khau khong dung")
+        if not bool(user["email_verified"]):
+            raise ApiError(
+                HTTPStatus.FORBIDDEN,
+                "Email chua xac nhan. Hay nhap ma xac nhan hoac gui lai ma.",
+            )
 
         self.respond(HTTPStatus.OK, {"user": row_to_user(user), "token": create_token(user)})
 
@@ -568,6 +919,39 @@ class VBookHandler(BaseHTTPRequestHandler):
             "drive_file_id": str(body.get("driveFileId", existing["drive_file_id"] if existing else "") or ""),
             "file_type": str(body.get("fileType", existing["file_type"] if existing else "") or ""),
             "is_published": 1 if bool(body.get("isPublished", bool(existing["is_published"]) if existing else True)) else 0,
+        }
+
+    def story_snapshot_payload(
+        self,
+        story_id: str,
+        body: dict[str, Any],
+        existing: sqlite3.Row | None = None,
+    ) -> dict[str, Any]:
+        title = str(body.get("title", existing["title"] if existing else story_id) or story_id).strip()
+
+        raw_genres = body.get("genres", json.loads(existing["genres"]) if existing else [])
+        if isinstance(raw_genres, str):
+            genres = [item.strip() for item in raw_genres.split(",") if item.strip()]
+        elif isinstance(raw_genres, list):
+            genres = [str(item).strip() for item in raw_genres if str(item).strip()]
+        else:
+            genres = []
+
+        return {
+            "title": title or story_id,
+            "title_eng": str(body.get("titleEng", existing["title_eng"] if existing else "") or ""),
+            "author": str(body.get("author", existing["author"] if existing else "") or ""),
+            "description": str(body.get("description", existing["description"] if existing else "") or ""),
+            "genres": json.dumps(genres, ensure_ascii=False),
+            "total_chapters": clamp_int(
+                body.get("totalChapters"),
+                existing["total_chapters"] if existing else 1,
+                1,
+                100_000,
+            ),
+            "icon_url": str(body.get("iconUrl", existing["icon_url"] if existing else "") or ""),
+            "drive_file_id": str(body.get("driveFileId", existing["drive_file_id"] if existing else story_id) or story_id),
+            "file_type": str(body.get("fileType", existing["file_type"] if existing else "") or ""),
         }
 
     def create_story(self) -> None:
@@ -655,6 +1039,69 @@ class VBookHandler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.NOT_FOUND, "Khong tim thay truyen")
         self.respond(HTTPStatus.OK, {"ok": True})
 
+    def ensure_library_story(
+        self,
+        con: sqlite3.Connection,
+        story_id: str,
+        body: dict[str, Any],
+    ) -> sqlite3.Row:
+        existing = con.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        payload = self.story_snapshot_payload(story_id, body, existing)
+        updated = now_iso()
+
+        if existing is None:
+            con.execute(
+                """
+                INSERT INTO stories (
+                  id, title, title_eng, author, description, genres,
+                  total_chapters, icon_url, drive_file_id, file_type,
+                  is_published, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                """,
+                (
+                    story_id,
+                    payload["title"],
+                    payload["title_eng"],
+                    payload["author"],
+                    payload["description"],
+                    payload["genres"],
+                    payload["total_chapters"],
+                    payload["icon_url"],
+                    payload["drive_file_id"],
+                    payload["file_type"],
+                    updated,
+                    updated,
+                ),
+            )
+        else:
+            con.execute(
+                """
+                UPDATE stories
+                SET title = ?, title_eng = ?, author = ?, description = ?,
+                    genres = ?, total_chapters = ?, icon_url = ?,
+                    drive_file_id = ?, file_type = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    payload["title"],
+                    payload["title_eng"],
+                    payload["author"],
+                    payload["description"],
+                    payload["genres"],
+                    payload["total_chapters"],
+                    payload["icon_url"],
+                    payload["drive_file_id"],
+                    payload["file_type"],
+                    updated,
+                    story_id,
+                ),
+            )
+
+        story = con.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        assert story is not None
+        return story
+
     def list_library(self) -> None:
         user = self.current_user(required=True)
         assert user is not None
@@ -689,9 +1136,7 @@ class VBookHandler(BaseHTTPRequestHandler):
 
         created = now_iso()
         with connect_db() as con:
-            story = con.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-            if story is None:
-                raise ApiError(HTTPStatus.NOT_FOUND, "Khong tim thay truyen")
+            story = self.ensure_library_story(con, story_id, body)
             con.execute(
                 """
                 INSERT INTO user_library (
@@ -740,9 +1185,7 @@ class VBookHandler(BaseHTTPRequestHandler):
         scroll_offset = float(body.get("scrollOffset") or 0)
 
         with connect_db() as con:
-            story = con.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
-            if story is None:
-                raise ApiError(HTTPStatus.NOT_FOUND, "Khong tim thay truyen")
+            self.ensure_library_story(con, story_id, body)
             con.execute(
                 """
                 INSERT INTO user_library (

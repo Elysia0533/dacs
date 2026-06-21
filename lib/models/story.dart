@@ -5,8 +5,8 @@ class Story {
   final String content;
   final String contentEng;
   final String description;
-  final String author;        // Tên tác giả
-  final List<String> genres; // Danh sách thể loại
+  final String author;
+  final List<String> genres;
   final int totalChapters;
   final int currentChapter;
   final int savedChapterIndex;
@@ -15,6 +15,7 @@ class Story {
   final bool isLocal;
   final String driveFileId;
   final bool isFromDrive;
+  final String fileType;
 
   Story({
     required this.id,
@@ -33,6 +34,7 @@ class Story {
     this.isLocal = false,
     this.driveFileId = "",
     this.isFromDrive = false,
+    this.fileType = "",
   });
 
   factory Story.fromJson(Map<String, dynamic> json) {
@@ -44,7 +46,11 @@ class Story {
       contentEng: json['contentEng'] ?? '',
       description: json['description'] ?? '',
       author: json['author'] ?? '',
-      genres: (json['genres'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      genres:
+          (json['genres'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
       totalChapters: json['totalChapters'] ?? 1,
       currentChapter: json['currentChapter'] ?? 1,
       savedChapterIndex: json['savedChapterIndex'] ?? 0,
@@ -53,6 +59,7 @@ class Story {
       isLocal: json['isLocal'] ?? false,
       driveFileId: json['driveFileId'] ?? '',
       isFromDrive: json['isFromDrive'] ?? false,
+      fileType: json['fileType'] ?? '',
     );
   }
 
@@ -74,6 +81,7 @@ class Story {
       'isLocal': isLocal,
       'driveFileId': driveFileId,
       'isFromDrive': isFromDrive,
+      'fileType': fileType,
     };
   }
 
@@ -94,6 +102,7 @@ class Story {
     bool? isLocal,
     String? driveFileId,
     bool? isFromDrive,
+    String? fileType,
   }) {
     return Story(
       id: id ?? this.id,
@@ -112,6 +121,7 @@ class Story {
       isLocal: isLocal ?? this.isLocal,
       driveFileId: driveFileId ?? this.driveFileId,
       isFromDrive: isFromDrive ?? this.isFromDrive,
+      fileType: fileType ?? this.fileType,
     );
   }
 }

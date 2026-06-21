@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:epub_view/epub_view.dart';
 import 'package:epubx/epubx.dart' as epubx;
+import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../models/story.dart';
 import '../services/google_drive_service.dart';
-import 'dart:typed_data';
 
 class EpubReaderScreen extends StatefulWidget {
   final Story story;
@@ -20,6 +20,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   bool _isLoading = false;
   String? _error;
   String _currentChapterTitle = '';
+  double? _loadProgress;
+  int _loadedBytes = 0;
+  int? _totalBytes;
 
   @override
   void initState() {
@@ -28,24 +31,96 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   }
 
   Future<void> _initEpub() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadProgress = null;
+      _loadedBytes = 0;
+      _totalBytes = null;
+    });
     try {
+      late final File epubFile;
       if (widget.story.isFromDrive && widget.story.localPath.isEmpty) {
-        Uint8List bytes = await GoogleDriveService.downloadFileBytes(
-          widget.story.driveFileId,
-        );
-        _epubController = EpubController(
-          document: EpubDocument.openData(bytes),
-        );
+        epubFile = await _cacheDriveEpub();
       } else {
-        _epubController = EpubController(
-          document: EpubDocument.openFile(File(widget.story.localPath)),
-        );
+        epubFile = File(widget.story.localPath);
       }
+      final bytes = await epubFile.readAsBytes();
+      _epubController = EpubController(document: EpubDocument.openData(bytes));
     } catch (e) {
       _error = e.toString();
     }
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<File> _cacheDriveEpub() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final cacheDirectory = Directory('${directory.path}/drive_read_cache');
+    await cacheDirectory.create(recursive: true);
+    final safeId = widget.story.driveFileId.replaceAll(
+      RegExp(r'[^A-Za-z0-9_-]'),
+      '_',
+    );
+    final cachedFile = File('${cacheDirectory.path}/$safeId.epub');
+    if (await cachedFile.exists() && await cachedFile.length() > 0) {
+      return cachedFile;
+    }
+    return GoogleDriveService.downloadFileToFile(
+      widget.story.driveFileId,
+      cachedFile,
+      onProgress: (receivedBytes, totalBytes) {
+        if (!mounted) return;
+        setState(() {
+          _loadedBytes = receivedBytes;
+          _totalBytes = totalBytes;
+          _loadProgress = totalBytes != null && totalBytes > 0
+              ? receivedBytes / totalBytes
+              : null;
+        });
+      },
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(1)} MB';
+  }
+
+  Widget _buildLoadingState() {
+    final progress = _loadProgress;
+    final label = _totalBytes == null
+        ? _formatBytes(_loadedBytes)
+        : '${_formatBytes(_loadedBytes)} / ${_formatBytes(_totalBytes!)}';
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 220,
+              child: LinearProgressIndicator(value: progress),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              widget.story.isFromDrive && widget.story.localPath.isEmpty
+                  ? 'Đang chuẩn bị truyện từ Drive...'
+                  : 'Đang mở truyện...',
+              textAlign: TextAlign.center,
+            ),
+            if (_loadedBytes > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -134,7 +209,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? _buildLoadingState()
           : _error != null
           ? Center(
               child: Padding(
@@ -187,9 +262,6 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Custom Table of Contents bottom sheet
-// ─────────────────────────────────────────────────────────────────────────────
 class _TocBottomSheet extends StatefulWidget {
   final EpubController controller;
   final String currentChapterTitle;
@@ -269,7 +341,6 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
           ),
           child: Column(
             children: [
-              // Handle bar
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Container(
@@ -281,7 +352,6 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
                   ),
                 ),
               ),
-              // Header
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: Row(
@@ -338,7 +408,6 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
                 color: isDark ? Colors.white12 : Colors.black12,
                 height: 1,
               ),
-              // Chapter list
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
@@ -381,7 +450,6 @@ class _TocBottomSheetState extends State<_TocBottomSheet> {
 
                           return InkWell(
                             onTap: () {
-                              // Navigate using CFI or content file
                               final cfiAnchor = ch.anchor != null
                                   ? '#${ch.anchor}'
                                   : '';

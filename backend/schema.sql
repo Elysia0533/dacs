@@ -7,6 +7,10 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL,
   avatar_url TEXT NOT NULL DEFAULT '',
   role TEXT NOT NULL DEFAULT 'user',
+  email_verified INTEGER NOT NULL DEFAULT 0,
+  email_verification_code TEXT NOT NULL DEFAULT '',
+  email_verification_token TEXT NOT NULL DEFAULT '',
+  email_verification_expires_at INTEGER,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -52,5 +56,6 @@ CREATE TABLE IF NOT EXISTS community_messages (
 
 CREATE INDEX IF NOT EXISTS idx_stories_title ON stories(title);
 CREATE INDEX IF NOT EXISTS idx_stories_author ON stories(author);
+CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(email_verification_token);
 CREATE INDEX IF NOT EXISTS idx_library_user ON user_library(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON community_messages(created_at);

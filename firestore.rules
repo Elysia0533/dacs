@@ -1,0 +1,83 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isVerified() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email in [
+          'vglduc25@gmail.com'
+        ];
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'displayName',
+          'avatarUrl',
+          'role',
+          'emailVerified',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ['user', 'admin']
+        && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'displayName',
+            'avatarUrl',
+            'emailVerified',
+            'updatedAt',
+            'role'
+          ])
+        && request.resource.data.role == resource.data.role;
+      allow delete: if isAdmin();
+
+      match /library/{storyId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    match /community_messages/{messageId} {
+      allow read: if true;
+      allow create: if isVerified()
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'displayName',
+          'avatarUrl',
+          'text',
+          'createdAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 1000
+        && request.resource.data.createdAt is timestamp;
+      allow update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

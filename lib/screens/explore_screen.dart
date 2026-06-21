@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/story.dart';
 import '../services/api_service.dart';
-import '../services/google_drive_service.dart';
+import '../theme/user_provider.dart';
+import '../widgets/app_state_widgets.dart';
+import '../widgets/story_cover_image.dart';
 import 'story_detail_screen.dart';
 
 class ExploreScreen extends StatefulWidget {
@@ -14,15 +17,12 @@ class ExploreScreen extends StatefulWidget {
 class _ExploreScreenState extends State<ExploreScreen> {
   List<Story> _serverStories = [];
   bool _isLoading = true;
-  bool _isAdmin = false;
   bool _isSearching = false;
   String? _loadError;
 
-  // Tìm kiếm theo tên + tác giả
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // Lọc theo thể loại
   String _selectedGenre = 'Tất cả';
   List<String> _allGenres = ['Tất cả'];
 
@@ -82,16 +82,15 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   String _formatLoadError(Object error) {
     final message = error.toString().replaceFirst('Exception: ', '');
-    if (message.contains('backend')) {
-      return '$message\n\nHãy chạy backend bằng: cd backend && python server.py';
-    }
     if (message.contains('GOOGLE_DRIVE_API_KEY')) {
-      return 'Thiếu Google Drive API key. Hãy chạy app với --dart-define=GOOGLE_DRIVE_API_KEY=your_key.';
+      return 'Chưa cấu hình khóa truy cập Drive. Hãy kiểm tra tham số chạy app trước khi build APK demo.';
+    }
+    if (message.contains('GOOGLE_DRIVE_FOLDER_URL')) {
+      return 'Chưa cấu hình thư mục truyện trên Drive. Hãy kiểm tra link thư mục dùng cho bản demo.';
     }
     return message;
   }
 
-  /// Thu thập tất cả thể loại duy nhất từ danh sách truyện
   void _buildGenreList() {
     final genreSet = <String>{};
     for (final story in _serverStories) {
@@ -103,21 +102,17 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final sorted = genreSet.toList()..sort();
     _allGenres = ['Tất cả', ...sorted];
 
-    // Reset lại nếu thể loại đang chọn không còn tồn tại
     if (!_allGenres.contains(_selectedGenre)) {
       _selectedGenre = 'Tất cả';
     }
   }
 
-  /// Lọc kết hợp: theo thể loại VÀ tìm kiếm text (tên + tác giả)
   List<Story> get _displayStories {
     return _serverStories.where((s) {
-      // Lọc thể loại
       final genreMatch =
           _selectedGenre == 'Tất cả' ||
           s.genres.any((g) => g.trim() == _selectedGenre);
 
-      // Tìm kiếm text
       final q = _searchQuery.trim().toLowerCase();
       final textMatch =
           q.isEmpty ||
@@ -134,11 +129,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Thêm Thư mục Drive vào Server'),
+          title: const Text('Quét thư mục Google Drive'),
           content: TextField(
             controller: urlController,
+            minLines: 3,
+            maxLines: 6,
             decoration: const InputDecoration(
-              hintText: 'https://drive.google.com/...',
+              hintText:
+                  'Dán một hoặc nhiều link Drive, mỗi link một dòng hoặc cách nhau bằng dấu phẩy',
             ),
           ),
           actions: [
@@ -147,33 +145,38 @@ class _ExploreScreenState extends State<ExploreScreen> {
               onPressed: () => Navigator.pop(dialogContext),
             ),
             TextButton(
-              child: const Text('Quét & Thêm'),
+              child: const Text('Quét'),
               onPressed: () async {
                 Navigator.pop(dialogContext);
                 setState(() => _isLoading = true);
                 try {
-                  List<Story> driveStories =
-                      await GoogleDriveService.fetchStoriesFromFolder(
+                  final driveStories =
+                      await ApiService.fetchDriveStoriesFromFolder(
                         urlController.text,
                       );
-                  await ApiService.addServerStories(driveStories);
+                  _serverStories = driveStories;
+                  _buildGenreList();
+                  _loadError = null;
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          'Đã thêm ${driveStories.length} truyện từ Drive vào Server!',
+                          'Đã tải ${driveStories.length} truyện từ Google Drive!',
                         ),
                       ),
                     );
                   }
                 } catch (e) {
+                  _serverStories = [];
+                  _buildGenreList();
+                  _loadError = _formatLoadError(e);
                   if (mounted) {
                     ScaffoldMessenger.of(
                       context,
                     ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
                   }
                 }
-                _loadServerStories();
+                if (mounted) setState(() => _isLoading = false);
               },
             ),
           ],
@@ -185,15 +188,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accentColor = isDark
-        ? const Color(0xFF4CAF82)
-        : const Color(0xFF2E7D52);
+    final colorScheme = Theme.of(context).colorScheme;
+    final accentColor = colorScheme.primary;
+    final userProvider = context.watch<UserProvider>();
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-        elevation: 0,
         titleSpacing: 16,
         title: _isSearching
             ? TextField(
@@ -202,53 +203,53 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 decoration: InputDecoration(
                   hintText: 'Tên truyện hoặc tác giả...',
                   border: InputBorder.none,
-                  hintStyle: TextStyle(
-                    color: isDark ? Colors.grey : Colors.black45,
-                  ),
+                  hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black,
-                  fontSize: 16,
-                ),
+                style: TextStyle(color: colorScheme.onSurface, fontSize: 16),
                 onChanged: (value) => setState(() => _searchQuery = value),
               )
-            : GestureDetector(
-                onLongPress: () {
-                  setState(() => _isAdmin = !_isAdmin);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        _isAdmin
-                            ? 'Đã bật chế độ Admin'
-                            : 'Đã tắt chế độ Admin',
-                      ),
+            : Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? colorScheme.surfaceContainerHighest
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                  );
-                },
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.grey.shade800
-                            : Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.menu_book, size: 18),
-                    ),
+                    child: const Icon(Icons.menu_book, size: 18),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Khám phá',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                  ),
+                  if (userProvider.isAdmin) ...[
                     const SizedBox(width: 8),
-                    const Text(
-                      'Khám phá',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: accentColor.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Text(
+                        'Admin',
+                        style: TextStyle(
+                          color: accentColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.keyboard_arrow_down, size: 20),
                   ],
-                ),
+                ],
               ),
         actions: [
           IconButton(
@@ -265,30 +266,33 @@ class _ExploreScreenState extends State<ExploreScreen> {
               });
             },
           ),
-          if (!_isSearching)
-            IconButton(icon: const Icon(Icons.more_vert), onPressed: () {}),
-          if (_isAdmin) ...[
+          if (!_isSearching) ...[
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _refreshServerStories,
-              tooltip: 'Làm mới danh sách',
+              tooltip: 'Làm mới Drive',
             ),
-            IconButton(
-              icon: const Icon(Icons.add_link),
-              onPressed: _importFromDriveDialog,
-              tooltip: 'Thêm truyện từ Drive',
-            ),
+            if (userProvider.isAdmin)
+              IconButton(
+                icon: const Icon(Icons.add_link),
+                onPressed: _importFromDriveDialog,
+                tooltip: 'Quét thư mục Drive',
+              ),
           ],
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingState(message: 'Đang tải danh sách truyện...')
           : _loadError != null && _serverStories.isEmpty
-          ? _buildLoadErrorState(isDark, accentColor)
+          ? _buildLoadErrorState()
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Hàng chip thể loại ──
+                _buildSourceDashboard(
+                  isDark: isDark,
+                  accentColor: accentColor,
+                  isAdmin: userProvider.isAdmin,
+                ),
                 if (_allGenres.length > 1)
                   _GenreChipBar(
                     genres: _allGenres,
@@ -298,61 +302,156 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     onSelect: (genre) => setState(() => _selectedGenre = genre),
                   ),
 
-                // ── Header kết quả ──
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: _buildResultHeader(isDark, accentColor),
                 ),
 
-                // ── Danh sách truyện ──
                 Expanded(child: _buildStoryGrid(isDark)),
               ],
             ),
     );
   }
 
-  Widget _buildLoadErrorState(bool isDark, Color accentColor) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.cloud_off_rounded,
-              size: 76,
-              color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Không tải được danh sách truyện',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _loadError ?? 'Vui lòng kiểm tra kết nối hoặc cấu hình Drive.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _loadServerStories,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Thử lại'),
-              style: FilledButton.styleFrom(backgroundColor: accentColor),
-            ),
-          ],
+  Widget _buildSourceDashboard({
+    required bool isDark,
+    required Color accentColor,
+    required bool isAdmin,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final epubCount = _serverStories
+        .where((story) => story.fileType.toLowerCase() == 'epub')
+        .length;
+    final pdfCount = _serverStories
+        .where((story) => story.fileType.toLowerCase() == 'pdf')
+        .length;
+    final txtCount = _serverStories
+        .where((story) => story.fileType.toLowerCase() == 'txt')
+        .length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.10),
+          ),
         ),
       ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.cloud_queue_rounded, color: accentColor),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Nguồn truyện Drive',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Quét thư mục, lọc thể loại và mở truyện trực tiếp',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton.filledTonal(
+                onPressed: _refreshServerStories,
+                tooltip: 'Làm mới Drive',
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+              if (isAdmin) ...[
+                const SizedBox(width: 6),
+                IconButton.filled(
+                  onPressed: _importFromDriveDialog,
+                  tooltip: 'Quét thư mục Drive',
+                  icon: const Icon(Icons.add_link_rounded),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _SourceStatPill(
+                  label: 'Tổng',
+                  value: '${_serverStories.length}',
+                  color: accentColor,
+                  icon: Icons.menu_book_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SourceStatPill(
+                  label: 'EPUB',
+                  value: '$epubCount',
+                  color: const Color(0xFF4E8F7E),
+                  icon: Icons.article_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SourceStatPill(
+                  label: 'PDF',
+                  value: '$pdfCount',
+                  color: const Color(0xFFB45D5D),
+                  icon: Icons.picture_as_pdf_rounded,
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _SourceStatPill(
+                  label: 'TXT',
+                  value: '$txtCount',
+                  color: const Color(0xFF8A6F34),
+                  icon: Icons.text_snippet_rounded,
+                  isDark: isDark,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadErrorState() {
+    return AppErrorState(
+      icon: Icons.cloud_off_rounded,
+      title: 'Không tải được danh sách truyện',
+      message: _loadError ?? 'Vui lòng kiểm tra kết nối hoặc cấu hình Drive.',
+      actionLabel: 'Thử lại',
+      onAction: _loadServerStories,
     );
   }
 
@@ -386,7 +485,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ],
           ),
         ),
-        // Nút xóa bộ lọc nếu đang lọc
         if (isFiltered)
           TextButton.icon(
             onPressed: () {
@@ -412,36 +510,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final stories = _displayStories;
 
     if (stories.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 72,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Không tìm thấy truyện nào',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _searchQuery.isNotEmpty
-                  ? 'Thử tìm với từ khóa khác'
-                  : 'Không có truyện thuộc thể loại này',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
-              ),
-            ),
-          ],
-        ),
+      return AppEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'Không tìm thấy truyện',
+        message: _searchQuery.isNotEmpty
+            ? 'Thử tìm bằng tên truyện, tác giả hoặc bỏ bớt bộ lọc.'
+            : 'Thể loại này hiện chưa có truyện trong danh sách.',
       );
     }
 
@@ -449,7 +523,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: 0.54,
+        childAspectRatio: 0.50,
         crossAxisSpacing: 12,
         mainAxisSpacing: 16,
       ),
@@ -462,7 +536,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 }
 
-// ── Widget: Hàng chip thể loại ──
 class _GenreChipBar extends StatelessWidget {
   final List<String> genres;
   final String selected;
@@ -536,7 +609,71 @@ class _GenreChipBar extends StatelessWidget {
   }
 }
 
-// ── Widget: Card truyện ──
+class _SourceStatPill extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final IconData icon;
+  final bool isDark;
+
+  const _SourceStatPill({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF171B19) : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StoryCard extends StatelessWidget {
   final Story story;
   final bool isDark;
@@ -545,6 +682,12 @@ class _StoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final type = story.fileType.isEmpty ? 'EPUB' : story.fileType.toUpperCase();
+    final chapterText = story.totalChapters > 1
+        ? '${story.totalChapters} chương'
+        : type;
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -555,34 +698,72 @@ class _StoryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Ảnh bìa
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: story.iconUrl.isNotEmpty
-                  ? Image.network(
-                      story.iconUrl,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      loadingBuilder: (ctx, child, progress) {
-                        if (progress == null) return child;
-                        return Container(
-                          color: isDark
-                              ? Colors.grey.shade800
-                              : Colors.grey.shade300,
-                          child: const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        );
-                      },
-                      errorBuilder: (ctx, err, stack) =>
-                          _PlaceholderCover(isDark: isDark),
-                    )
-                  : _PlaceholderCover(isDark: isDark),
+            child: Stack(
+              children: [
+                StoryCoverImage(
+                  imagePath: story.iconUrl,
+                  driveFileId: story.driveFileId,
+                  fileType: story.fileType,
+                  width: double.infinity,
+                  height: double.infinity,
+                  borderRadius: BorderRadius.circular(8),
+                  backgroundColor: isDark
+                      ? Colors.grey.shade800
+                      : Colors.grey.shade300,
+                ),
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      type,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 6,
+                  right: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.70),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      chapterText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 6),
-          // Tên truyện
           Text(
             story.title,
             maxLines: 2,
@@ -591,10 +772,9 @@ class _StoryCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
               fontSize: 13,
               height: 1.25,
-              color: isDark ? Colors.white : Colors.black87,
+              color: colorScheme.onSurface,
             ),
           ),
-          // Tên tác giả (nếu có)
           if (story.author.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(
@@ -608,26 +788,6 @@ class _StoryCard extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _PlaceholderCover extends StatelessWidget {
-  final bool isDark;
-  const _PlaceholderCover({required this.isDark});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
-      child: Center(
-        child: Icon(
-          Icons.book,
-          size: 40,
-          color: isDark ? Colors.white38 : Colors.black38,
-        ),
       ),
     );
   }

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 
 
+os.environ.setdefault("VBOOK_ENV_FILE", "0")
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8080"
 
 
@@ -41,14 +43,30 @@ def main() -> None:
         "/auth/register",
         {"email": email, "password": "123456", "displayName": "Demo User"},
     )
-    token = registered["token"]
     assert registered["user"]["email"] == email
+    assert registered["emailVerificationRequired"] is True
+    verification = request(
+        "POST",
+        "/auth/verify-email",
+        {"email": email, "code": registered["devVerificationCode"]},
+    )
+    token = verification["token"]
+    assert verification["user"]["emailVerified"] is True
 
-    stories = request("GET", "/stories")
-    assert stories["total"] >= 1
-    story_id = stories["items"][0]["id"]
-
-    request("POST", "/me/library", {"storyId": story_id}, token)
+    story_id = f"drive_story_{int(time.time())}"
+    request(
+        "POST",
+        "/me/library",
+        {
+            "storyId": story_id,
+            "title": "Drive Story Demo",
+            "author": "vBook",
+            "genres": ["Demo", "Drive"],
+            "totalChapters": 10,
+            "driveFileId": story_id,
+        },
+        token,
+    )
     request(
         "PUT",
         f"/me/library/{story_id}/progress",
@@ -57,6 +75,7 @@ def main() -> None:
     )
     library = request("GET", "/me/library", token=token)
     assert len(library["items"]) >= 1
+    assert library["items"][0]["story"]["title"] == "Drive Story Demo"
 
     message = request("POST", "/community/messages", {"text": "Xin chao vBook!"}, token)
     assert message["message"]["text"] == "Xin chao vBook!"

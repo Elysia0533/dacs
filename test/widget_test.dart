@@ -21,7 +21,9 @@ void main() {
 
     SharedPreferences.setMockInitialValues({
       'local_imported_stories': <String>[],
-      'server_stories': <String>[json.encode(cachedServerStory.toJson())],
+      'drive_story_catalog_cache': <String>[
+        json.encode(cachedServerStory.toJson()),
+      ],
     });
 
     await tester.pumpWidget(
@@ -37,6 +39,11 @@ void main() {
     await tester.pump();
 
     expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.byType(BottomNavigationBar), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NavigationBar), findsOneWidget);
   });
 }

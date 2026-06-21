@@ -22,6 +22,7 @@ class UserProvider extends ChangeNotifier {
   String get token => _token;
   bool get isLoggedIn => _user != null && _token.isNotEmpty;
   bool get isAdmin => _role == 'admin';
+  bool get emailVerified => _user?.emailVerified ?? false;
   Color get avatarColor => Color(_avatarColorValue);
 
   UserProvider() {
@@ -38,20 +39,25 @@ class UserProvider extends ChangeNotifier {
     _role = _user?.role ?? 'user';
     _avatarColorValue = prefs.getInt(_avatarColorKey) ?? 0xFF4CAF50;
     notifyListeners();
+
+    await refreshSession();
   }
 
-  Future<void> registerWithBackend({
+  Future<RegisterResult> registerWithBackend({
     required String email,
     required String password,
     required String displayName,
     required int colorValue,
   }) async {
-    final user = await ApiService.registerWithBackend(
+    final result = await ApiService.registerWithBackend(
       email: email,
       password: password,
       displayName: displayName,
     );
-    await _setBackendUser(user, colorValue);
+    if (!result.emailVerificationRequired) {
+      await _setBackendUser(result.user, colorValue);
+    }
+    return result;
   }
 
   Future<void> loginWithBackend({
@@ -66,9 +72,21 @@ class UserProvider extends ChangeNotifier {
     await _setBackendUser(user, colorValue);
   }
 
-  Future<void> _setBackendUser(AppUser user, int colorValue) async {
+  Future<void> sendPasswordResetEmail(String email) {
+    return ApiService.sendPasswordResetEmail(email: email);
+  }
+
+  Future<void> updateProfile({
+    required String displayName,
+    required int colorValue,
+    String avatarUrl = '',
+  }) async {
+    final user = await ApiService.updateUserProfile(
+      displayName: displayName,
+      avatarColorValue: colorValue,
+      avatarUrl: avatarUrl,
+    );
     _user = user;
-    _token = await ApiService.getSavedAuthToken() ?? '';
     _id = user.id;
     _name = user.displayName;
     _email = user.email;
@@ -80,13 +98,51 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  @Deprecated('Dùng registerWithBackend/loginWithBackend để đăng nhập thật.')
-  Future<void> login(String name, int colorValue) async {
-    _name = name.trim();
+  Future<void> verifyEmailWithBackend({
+    required String email,
+    required String code,
+    required int colorValue,
+  }) async {
+    final user = await ApiService.verifyEmailWithBackend(
+      email: email,
+      code: code,
+    );
+    await _setBackendUser(user, colorValue);
+  }
+
+  Future<EmailVerificationResult> resendVerificationCode(String email) {
+    return ApiService.resendVerificationCode(email: email);
+  }
+
+  Future<void> _setBackendUser(AppUser user, int colorValue) async {
+    _user = user;
+    _token = await ApiService.getSavedAuthToken() ?? '';
+    _id = user.id;
+    _name = user.displayName;
+    _email = user.email;
+    _role = user.role;
     _avatarColorValue = colorValue;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_nameKey, _name);
     await prefs.setInt(_avatarColorKey, colorValue);
+    await ApiService.mergeCloudLibraryIntoLocal();
+    notifyListeners();
+  }
+
+  Future<void> refreshSession() async {
+    final refreshedUser = await ApiService.refreshCurrentUser();
+    if (refreshedUser == null) return;
+
+    _user = refreshedUser;
+    _token = await ApiService.getSavedAuthToken() ?? _token;
+    _id = refreshedUser.id;
+    _name = refreshedUser.displayName;
+    _email = refreshedUser.email;
+    _role = refreshedUser.role;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_nameKey, _name);
+    await ApiService.mergeCloudLibraryIntoLocal();
     notifyListeners();
   }
 
@@ -104,7 +160,6 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Lấy chữ cái đầu viết hoa để hiển thị avatar
   String get initials {
     if (_name.isEmpty) return '?';
     final parts = _name.trim().split(' ');
